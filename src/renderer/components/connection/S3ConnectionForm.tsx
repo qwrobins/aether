@@ -30,6 +30,7 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
   const [rolesError, setRolesError] = useState<string | null>(null);
   const [awsProfiles, setAwsProfiles] = useState<string[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
 
   async function fetchRoles() {
     if (!window.api?.invoke) return;
@@ -50,24 +51,30 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
   }
 
   async function fetchAwsProfiles() {
-    if (!window.api?.invoke) return;
+    if (!window.api?.invoke) {
+      setProfilesError('window.api not available');
+      return;
+    }
     setLoadingProfiles(true);
+    setProfilesError(null);
     try {
       const result = await window.api.invoke('s3:list-profiles');
       setAwsProfiles(result);
-    } catch {
-      // Silently fail — user can type manually
+    } catch (err: any) {
+      setProfilesError(err?.message || String(err));
     } finally {
       setLoadingProfiles(false);
     }
   }
 
+  // Always fetch AWS profiles on mount so they're ready
+  useEffect(() => {
+    fetchAwsProfiles();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (authMethod === 'iam-role' && roles.length === 0) {
       fetchRoles();
-    }
-    if (authMethod === 'profile' && awsProfiles.length === 0) {
-      fetchAwsProfiles();
     }
   }, [authMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -194,7 +201,11 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
             />
           )}
           <p className="text-[11px] text-muted-foreground/60">
-            Profiles found in ~/.aws/credentials and ~/.aws/config
+            {profilesError
+              ? <span className="text-destructive">{profilesError}</span>
+              : loadingProfiles
+                ? 'Loading profiles...'
+                : `${awsProfiles.length} profiles found in ~/.aws`}
           </p>
         </div>
       )}
