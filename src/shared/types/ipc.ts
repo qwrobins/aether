@@ -1,4 +1,5 @@
 import type { FileEntry, DirectoryListing } from './filesystem';
+import type { ConnectionProfile } from './connection';
 
 export interface IpcInvokeMap {
   'fs:read-dir': { args: [path: string]; return: DirectoryListing };
@@ -8,6 +9,12 @@ export interface IpcInvokeMap {
   'fs:rename': { args: [oldPath: string, newPath: string]; return: void };
   'fs:get-home': { args: []; return: string };
   'fs:open-in-explorer': { args: [path: string]; return: void };
+
+  // Connections
+  'conn:save': { args: [profile: ConnectionProfile]; return: string };
+  'conn:delete': { args: [id: string]; return: void };
+  'conn:list': { args: []; return: ConnectionProfile[] };
+  'conn:test': { args: [profile: ConnectionProfile]; return: boolean };
 }
 
 export interface IpcEventMap {
