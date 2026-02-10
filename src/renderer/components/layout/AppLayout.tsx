@@ -18,15 +18,15 @@ export function AppLayout() {
     <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
       <TitleBar />
       <SidebarProvider defaultOpen={true}>
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <AppSidebar />
-          <SidebarInset className="flex flex-1 flex-col overflow-hidden">
-            <ResizablePanelGroup direction="horizontal" className="flex-1">
-              <ResizablePanel defaultSize={50} minSize={25}>
+          <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
+              <ResizablePanel defaultSize={50} minSize={25} className="!overflow-hidden">
                 <LocalPanel />
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={50} minSize={25}>
+              <ResizablePanel defaultSize={50} minSize={25} className="!overflow-hidden">
                 <RemotePanel />
               </ResizablePanel>
             </ResizablePanelGroup>
