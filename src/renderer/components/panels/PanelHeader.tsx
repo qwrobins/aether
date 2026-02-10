@@ -14,8 +14,8 @@ export function PanelHeader({ label, path, isActive, onNavigate, onRefresh }: Pa
   return (
     <div
       className={cn(
-        'flex h-[44px] shrink-0 items-center gap-3 border-b border-border/50 bg-surface/50 px-3 py-2',
-        isActive && 'border-b-2 border-b-primary'
+        'flex h-[44px] shrink-0 items-center gap-3 border-b-2 border-border/50 bg-surface/50 px-3 py-2 transition-[border-color] duration-200',
+        isActive ? 'border-b-primary' : 'border-b-transparent'
       )}
     >
       <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-muted-foreground">
@@ -28,7 +28,7 @@ export function PanelHeader({ label, path, isActive, onNavigate, onRefresh }: Pa
 
       <button
         onClick={onRefresh}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-white/[0.06] hover:text-foreground"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] duration-150 hover:bg-white/[0.06] hover:text-foreground active:bg-white/[0.08]"
         aria-label="Refresh"
       >
         <RotateCw size={13} />
