@@ -94,7 +94,7 @@ export function FileList({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" role="grid" aria-label="File list">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden" role="grid" aria-label="File list">
       <Table>
         <TableHeader>
           <TableRow className="border-b border-border/50 hover:bg-transparent">
@@ -129,7 +129,7 @@ export function FileList({
           </TableRow>
         </TableHeader>
       </Table>
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-auto">
         <Table>
           <TableBody>
             {entries.map((entry, index) => (
@@ -149,7 +149,7 @@ export function FileList({
             ))}
           </TableBody>
         </Table>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
