@@ -7,26 +7,40 @@ if (started) {
   app.quit();
 }
 
+let mainWindow: BrowserWindow | null = null;
+
 const createWindow = () => {
-  const mainWindow = new BrowserWindow({
+  console.log('[Aether] Creating window...');
+
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     frame: false,
-    titleBarStyle: 'hidden',
     backgroundColor: '#111118',
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
     },
   });
 
-  registerAllIpcHandlers(mainWindow);
+  mainWindow.once('ready-to-show', () => {
+    console.log('[Aether] Window ready to show');
+    mainWindow?.show();
+  });
+
+  try {
+    registerAllIpcHandlers(mainWindow);
+    console.log('[Aether] IPC handlers registered');
+  } catch (err) {
+    console.error('[Aether] Failed to register IPC handlers:', err);
+  }
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    console.log('[Aether] Loading dev server:', MAIN_WINDOW_VITE_DEV_SERVER_URL);
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     mainWindow.loadFile(
@@ -34,9 +48,11 @@ const createWindow = () => {
     );
   }
 
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
+  mainWindow.webContents.openDevTools();
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 };
 
 app.on('ready', createWindow);

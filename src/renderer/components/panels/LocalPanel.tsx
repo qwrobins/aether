@@ -27,11 +27,8 @@ export function LocalPanel() {
   const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
-    async function init() {
-      const home = await window.api.invoke('fs:get-home');
-      navigateTo(home);
-    }
-    init();
+    if (!window.api?.invoke) return;
+    window.api.invoke('fs:get-home').then(navigateTo).catch(console.error);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
