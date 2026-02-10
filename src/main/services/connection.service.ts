@@ -16,6 +16,13 @@ export class ConnectionService {
     );
   }
 
+  getById(id: string): ConnectionProfile | undefined {
+    const store = readStore();
+    const profiles = store.connections as unknown as ConnectionProfile[];
+    const profile = profiles.find((p) => p.id === id);
+    return profile ? this.decryptProfile(profile) : undefined;
+  }
+
   save(profile: ConnectionProfile): string {
     const store = readStore();
     const profiles = store.connections as unknown as ConnectionProfile[];
