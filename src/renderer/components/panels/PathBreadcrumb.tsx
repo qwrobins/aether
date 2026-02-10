@@ -1,0 +1,104 @@
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  BreadcrumbEllipsis,
+} from '@/components/ui/breadcrumb';
+
+interface PathBreadcrumbProps {
+  path: string;
+  onNavigate: (path: string) => void;
+}
+
+export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
+  const normalized = path.replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+
+  // On Unix, the root is "/"; on Windows it might be "C:/"
+  const isUnix = normalized.startsWith('/');
+  const rootLabel = isUnix ? '/' : segments[0] ? `${segments[0]}/` : '/';
+  const rootPath = isUnix ? '/' : `${segments[0]}/`;
+  const displaySegments = isUnix ? segments : segments.slice(1);
+
+  const MAX_VISIBLE = 4;
+  const shouldCollapse = displaySegments.length > MAX_VISIBLE;
+  const visibleSegments = shouldCollapse
+    ? [...displaySegments.slice(0, 1), ...displaySegments.slice(-2)]
+    : displaySegments;
+
+  function buildPath(segmentIndex: number): string {
+    const allSegments = isUnix ? segments : segments;
+    const upTo = isUnix ? segmentIndex + 1 : segmentIndex + 1;
+    const joined = allSegments.slice(0, upTo).join('/');
+    return isUnix ? `/${joined}` : joined;
+  }
+
+  return (
+    <Breadcrumb>
+      <BreadcrumbList className="flex-nowrap text-[12px] gap-1">
+        <BreadcrumbItem>
+          <BreadcrumbLink
+            className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+            onClick={() => onNavigate(rootPath)}
+          >
+            {rootLabel}
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+
+        {shouldCollapse && (
+          <>
+            <BreadcrumbSeparator className="[&>svg]:size-3" />
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  const idx = isUnix ? 0 : 1;
+                  onNavigate(buildPath(idx));
+                }}
+              >
+                {displaySegments[0]}
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator className="[&>svg]:size-3" />
+            <BreadcrumbItem>
+              <BreadcrumbEllipsis className="size-5" />
+            </BreadcrumbItem>
+          </>
+        )}
+
+        {(shouldCollapse ? visibleSegments.slice(1) : visibleSegments).map(
+          (segment, i) => {
+            const realIndex = shouldCollapse
+              ? displaySegments.length - 2 + i
+              : i;
+            const fullIndex = isUnix ? realIndex : realIndex + 1;
+            const isLast = realIndex === displaySegments.length - 1;
+
+            return (
+              <span key={fullIndex} className="contents">
+                <BreadcrumbSeparator className="[&>svg]:size-3" />
+                <BreadcrumbItem>
+                  {isLast ? (
+                    <BreadcrumbPage className="text-[12px] max-w-[150px] truncate">
+                      {segment}
+                    </BreadcrumbPage>
+                  ) : (
+                    <BreadcrumbLink
+                      className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground max-w-[120px] truncate"
+                      onClick={() => onNavigate(buildPath(fullIndex))}
+                    >
+                      {segment}
+                    </BreadcrumbLink>
+                  )}
+                </BreadcrumbItem>
+              </span>
+            );
+          }
+        )}
+      </BreadcrumbList>
+    </Breadcrumb>
+  );
+}
