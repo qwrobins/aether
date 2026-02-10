@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { House, Monitor, Download, Cloud, Server, Settings } from 'lucide-react';
+import { House, Monitor, Download, Cloud, Server, Settings, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Sidebar,
   SidebarContent,
@@ -15,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useConnectionStore } from '@/stores/connectionStore';
+import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { ConnectionManager } from '@/components/connection/ConnectionManager';
 
 const quickAccessItems = [
@@ -36,9 +38,42 @@ function getQuickAccessPath(pathKey: string, homePath: string): string {
   }
 }
 
+function ConnectionStatusDot({ profileId }: { profileId: string }) {
+  const { activeConnectionId, connectionStatus } = useRemotePanelStore();
+  const isActive = activeConnectionId === profileId;
+  const isConnecting = connectionStatus === 'connecting';
+
+  if (isActive) {
+    return (
+      <span className="relative inline-block size-[6px] shrink-0 rounded-full bg-success">
+        <span className="absolute inset-0 animate-ping rounded-full bg-success/60" />
+      </span>
+    );
+  }
+
+  if (isConnecting && useRemotePanelStore.getState().activeProfile?.id === profileId) {
+    return (
+      <span className="relative inline-block size-[6px] shrink-0 rounded-full bg-amber-400">
+        <span className="absolute inset-0 animate-pulse rounded-full bg-amber-400/60" />
+      </span>
+    );
+  }
+
+  if (connectionStatus === 'error' && useRemotePanelStore.getState().activeProfile?.id === profileId) {
+    return (
+      <span className="inline-block size-[6px] shrink-0 rounded-full bg-destructive" />
+    );
+  }
+
+  return (
+    <span className="inline-block size-[6px] shrink-0 rounded-full bg-muted-foreground/40" />
+  );
+}
+
 export function AppSidebar() {
   const { navigateTo } = useLocalPanelStore();
   const { profiles, loadProfiles } = useConnectionStore();
+  const { activeConnectionId, connect, disconnect } = useRemotePanelStore();
   const [connectionManagerOpen, setConnectionManagerOpen] = useState(false);
 
   useEffect(() => {
@@ -49,6 +84,26 @@ export function AppSidebar() {
     const home = await window.api.invoke('fs:get-home');
     const target = getQuickAccessPath(pathKey, home);
     navigateTo(target);
+  }
+
+  async function handleConnectionClick(profileId: string) {
+    // If already connected to this profile, do nothing
+    if (activeConnectionId === profileId) return;
+
+    // If connected to a different profile, disconnect first
+    if (activeConnectionId) {
+      await disconnect();
+    }
+
+    const profile = profiles.find((p) => p.id === profileId);
+    if (profile) {
+      await connect(profile);
+    }
+  }
+
+  async function handleDisconnect(e: React.MouseEvent) {
+    e.stopPropagation();
+    await disconnect();
   }
 
   return (
@@ -102,20 +157,29 @@ export function AppSidebar() {
                 <SidebarMenu>
                   {profiles.map((profile) => (
                     <SidebarMenuItem key={profile.id}>
-                      <SidebarMenuButton tooltip={profile.name}>
-                        <span
-                          className={`inline-block size-[6px] shrink-0 rounded-full ${
-                            profile.type === 's3'
-                              ? 'bg-primary/40'
-                              : 'bg-emerald-500/40'
-                          }`}
-                        />
+                      <SidebarMenuButton
+                        tooltip={profile.name}
+                        onClick={() => handleConnectionClick(profile.id)}
+                        className={cn(
+                          activeConnectionId === profile.id && 'bg-white/[0.04]'
+                        )}
+                      >
+                        <ConnectionStatusDot profileId={profile.id} />
                         {profile.type === 's3' ? (
                           <Cloud size={14} className="text-primary/60" />
                         ) : (
                           <Server size={14} className="text-emerald-400/60" />
                         )}
                         <span className="truncate text-[13px]">{profile.name}</span>
+                        {activeConnectionId === profile.id && (
+                          <button
+                            onClick={handleDisconnect}
+                            className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors duration-150 hover:bg-white/[0.06] hover:text-foreground"
+                            aria-label="Disconnect"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
