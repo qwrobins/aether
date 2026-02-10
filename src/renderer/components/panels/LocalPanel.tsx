@@ -1,7 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
+import { useRemotePanelStore } from '@/stores/remotePanelStore';
+import { useTransferStore } from '@/stores/transferStore';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
+import { DropZone } from './DropZone';
+import type { TransferRequest } from '@shared/types/transfer';
 
 export function LocalPanel() {
   const {
@@ -19,6 +23,8 @@ export function LocalPanel() {
     setSort,
   } = useLocalPanelStore();
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
   useEffect(() => {
     async function init() {
       const home = await window.api.invoke('fs:get-home');
@@ -27,8 +33,80 @@ export function LocalPanel() {
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Only accept drops from the remote panel
+    if (e.dataTransfer.types.includes('application/aether-transfer')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only trigger if leaving the panel (not entering a child)
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+
+      const raw = e.dataTransfer.getData('application/aether-transfer');
+      if (!raw) return;
+
+      try {
+        const payload = JSON.parse(raw);
+        if (payload.panelType !== 'remote') return;
+
+        const { activeConnectionId, activeProfile, currentBucket } =
+          useRemotePanelStore.getState();
+        if (!activeConnectionId || !activeProfile) return;
+
+        for (const entry of payload.entries) {
+          const request: TransferRequest = {
+            sourcePath: entry.path,
+            destinationPath: `${currentPath}/${entry.name}`,
+            direction: 'download',
+            connectionId: activeConnectionId,
+            connectionType: activeProfile.type,
+            bucket: currentBucket || undefined,
+          };
+
+          const transferId = await window.api.invoke('transfer:start', request);
+          useTransferStore.getState().addTransfer({
+            id: transferId,
+            fileName: entry.name,
+            sourcePath: request.sourcePath,
+            destinationPath: request.destinationPath,
+            direction: 'download',
+            connectionId: activeConnectionId,
+            connectionType: activeProfile.type,
+            bucket: request.bucket,
+            size: entry.size || 0,
+            bytesTransferred: 0,
+            status: 'queued',
+            speed: 0,
+            retryCount: 0,
+          });
+        }
+      } catch {
+        // Invalid transfer data
+      }
+    },
+    [currentPath]
+  );
+
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className="relative flex h-full flex-col overflow-hidden"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <DropZone isActive={isDragOver} direction="download" />
+
       <PanelHeader
         label="Local"
         path={currentPath}
@@ -50,6 +128,7 @@ export function LocalPanel() {
         sortField={sortField}
         sortDirection={sortDirection}
         viewMode={viewMode}
+        panelType="local"
         onSelect={selectFile}
         onNavigate={navigateTo}
         onSort={setSort}

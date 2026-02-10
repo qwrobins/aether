@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FileItem } from './FileItem';
+import type { PanelType } from './FileItem';
 import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/types/filesystem';
 
 interface FileListProps {
@@ -20,6 +21,7 @@ interface FileListProps {
   sortField: SortField;
   sortDirection: SortDirection;
   viewMode: ViewMode;
+  panelType: PanelType;
   onSelect: (path: string, multi: boolean) => void;
   onNavigate: (path: string) => void;
   onSort: (field: SortField) => void;
@@ -40,6 +42,7 @@ export function FileList({
   isLoading,
   sortField,
   sortDirection,
+  panelType,
   onSelect,
   onNavigate,
   onSort,
@@ -123,6 +126,7 @@ export function FileList({
                 key={entry.path}
                 entry={entry}
                 isSelected={selectedFiles.has(entry.path)}
+                panelType={panelType}
                 onSelect={onSelect}
                 onNavigate={onNavigate}
               />

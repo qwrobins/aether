@@ -24,6 +24,8 @@ const createWindow = () => {
     },
   });
 
+  registerAllIpcHandlers(mainWindow);
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -36,8 +38,6 @@ const createWindow = () => {
     mainWindow.webContents.openDevTools();
   }
 };
-
-registerAllIpcHandlers();
 
 app.on('ready', createWindow);
 

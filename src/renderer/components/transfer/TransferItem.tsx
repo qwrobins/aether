@@ -1,0 +1,113 @@
+import type { TransferItem as TItem } from '@shared/types/transfer';
+import { X, RotateCw, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface Props {
+  transfer: TItem;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec === 0) return '';
+  const k = 1024;
+  if (bytesPerSec < k) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < k * k) return `${(bytesPerSec / k).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / k / k).toFixed(1)} MB/s`;
+}
+
+export function TransferItem({ transfer: t }: Props) {
+  const percentage =
+    t.size > 0 ? Math.round((t.bytesTransferred / t.size) * 100) : 0;
+  const isUpload = t.direction === 'upload';
+
+  const handleCancel = () => {
+    window.api.invoke('transfer:cancel', t.id);
+  };
+
+  return (
+    <div className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-white/[0.02]">
+      {/* Icon + filename */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <div className="shrink-0">
+          {t.status === 'completed' ? (
+            <Check className="h-3.5 w-3.5 text-success" />
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              {isUpload ? '\u2191' : '\u2193'}
+            </span>
+          )}
+        </div>
+        <span
+          className={cn(
+            'truncate text-[12px]',
+            t.status === 'completed' && 'text-muted-foreground'
+          )}
+        >
+          {t.fileName}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-24 shrink-0">
+        {t.status === 'active' || t.status === 'queued' ? (
+          <div className="h-[3px] overflow-hidden rounded-full bg-muted-foreground/10">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all duration-300',
+                isUpload
+                  ? 'bg-primary'
+                  : 'bg-accent',
+                t.status === 'active' &&
+                  'animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-gradient-to-r',
+                t.status === 'active' && isUpload &&
+                  'from-primary via-primary/60 to-primary',
+                t.status === 'active' && !isUpload &&
+                  'from-accent via-accent/60 to-accent'
+              )}
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+        ) : t.status === 'failed' ? (
+          <div className="h-[3px] overflow-hidden rounded-full bg-destructive/30">
+            <div
+              className="h-full rounded-full bg-destructive"
+              style={{ width: `${percentage}%` }}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Stats */}
+      <span className="w-8 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+        {t.status === 'completed'
+          ? '\u2713'
+          : t.status === 'failed'
+            ? '\u2717'
+            : `${percentage}%`}
+      </span>
+      <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+        {t.status === 'active'
+          ? formatSpeed(t.speed)
+          : t.status === 'queued'
+            ? 'waiting'
+            : ''}
+      </span>
+
+      {/* Cancel/Retry button */}
+      <div className="w-6 shrink-0">
+        {(t.status === 'active' || t.status === 'queued') && (
+          <button
+            onClick={handleCancel}
+            className="hidden h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground group-hover:flex"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+        {t.status === 'failed' && (
+          <button className="flex h-5 w-5 items-center justify-center rounded text-destructive hover:text-destructive/80">
+            <RotateCw className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

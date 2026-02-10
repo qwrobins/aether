@@ -1,5 +1,6 @@
 import type { FileEntry, DirectoryListing } from './filesystem';
 import type { ConnectionProfile } from './connection';
+import type { TransferRequest, TransferItem, TransferProgress, TransferResult } from './transfer';
 
 export interface IpcInvokeMap {
   'fs:read-dir': { args: [path: string]; return: DirectoryListing };
@@ -29,8 +30,16 @@ export interface IpcInvokeMap {
   'conn:test': { args: [profile: ConnectionProfile]; return: boolean };
   'conn:connect': { args: [id: string]; return: { status: string } };
   'conn:disconnect': { args: [id: string]; return: void };
+
+  // Transfers
+  'transfer:start': { args: [request: TransferRequest]; return: string };
+  'transfer:cancel': { args: [transferId: string]; return: void };
+  'transfer:clear': { args: []; return: void };
+  'transfer:list': { args: []; return: TransferItem[] };
 }
 
 export interface IpcEventMap {
-  // Transfer events will be added in Phase 6
+  'transfer:progress': TransferProgress;
+  'transfer:complete': TransferResult;
+  'transfer:error': { transferId: string; error: string };
 }

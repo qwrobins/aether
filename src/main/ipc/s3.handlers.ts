@@ -5,15 +5,16 @@ import { sftpService } from './sftp.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 import type { S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
 
+export const s3Service = new S3Service();
+
 export function registerS3Handlers(ipcMain: IpcMain): void {
-  const s3 = new S3Service();
   const connections = new ConnectionService();
 
   ipcMain.handle(IpcChannels.CONN_CONNECT, async (_event, id: string) => {
     const profile = connections.getById(id);
     if (!profile) throw new Error('Connection not found');
     if (profile.type === 's3') {
-      s3.connect(id, profile as S3ConnectionProfile);
+      s3Service.connect(id, profile as S3ConnectionProfile);
       return { status: 'connected' };
     } else if (profile.type === 'sftp') {
       await sftpService.connect(id, profile as SftpConnectionProfile);
@@ -23,35 +24,35 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle(IpcChannels.CONN_DISCONNECT, async (_event, id: string) => {
-    s3.disconnect(id);
+    s3Service.disconnect(id);
     await sftpService.disconnect(id);
   });
 
   ipcMain.handle(
     IpcChannels.S3_LIST_BUCKETS,
     async (_event, connectionId: string) => {
-      return s3.listBuckets(connectionId);
+      return s3Service.listBuckets(connectionId);
     },
   );
 
   ipcMain.handle(
     IpcChannels.S3_LIST_OBJECTS,
     async (_event, connectionId: string, bucket: string, prefix: string) => {
-      return s3.listObjects(connectionId, bucket, prefix);
+      return s3Service.listObjects(connectionId, bucket, prefix);
     },
   );
 
   ipcMain.handle(
     IpcChannels.S3_DELETE_OBJECT,
     async (_event, connectionId: string, bucket: string, key: string) => {
-      return s3.deleteObject(connectionId, bucket, key);
+      return s3Service.deleteObject(connectionId, bucket, key);
     },
   );
 
   ipcMain.handle(
     IpcChannels.S3_CREATE_FOLDER,
     async (_event, connectionId: string, bucket: string, key: string) => {
-      return s3.createFolder(connectionId, bucket, key);
+      return s3Service.createFolder(connectionId, bucket, key);
     },
   );
 }
