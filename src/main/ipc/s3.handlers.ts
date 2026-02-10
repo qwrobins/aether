@@ -1,8 +1,9 @@
 import { IpcMain } from 'electron';
 import { S3Service } from '../services/s3.service';
 import { ConnectionService } from '../services/connection.service';
+import { sftpService } from './sftp.handlers';
 import { IpcChannels } from '@shared/constants/channels';
-import type { S3ConnectionProfile } from '@shared/types/connection';
+import type { S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
 
 export function registerS3Handlers(ipcMain: IpcMain): void {
   const s3 = new S3Service();
@@ -14,13 +15,16 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
     if (profile.type === 's3') {
       s3.connect(id, profile as S3ConnectionProfile);
       return { status: 'connected' };
+    } else if (profile.type === 'sftp') {
+      await sftpService.connect(id, profile as SftpConnectionProfile);
+      return { status: 'connected' };
     }
-    // SFTP will be handled in Phase 5
-    throw new Error(`Connection type ${profile.type} not yet supported`);
+    throw new Error(`Connection type ${profile.type} not supported`);
   });
 
   ipcMain.handle(IpcChannels.CONN_DISCONNECT, async (_event, id: string) => {
     s3.disconnect(id);
+    await sftpService.disconnect(id);
   });
 
   ipcMain.handle(

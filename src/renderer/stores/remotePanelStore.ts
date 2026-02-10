@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/types/filesystem';
-import type { ConnectionProfile, ConnectionStatus } from '@shared/types/connection';
+import type { ConnectionProfile, ConnectionStatus, SftpConnectionProfile } from '@shared/types/connection';
 
 interface RemotePanelState {
   // Connection state
@@ -73,6 +73,14 @@ function getParentPrefix(prefix: string): string {
   return trimmed.substring(0, lastSlash + 1);
 }
 
+function getParentPath(path: string): string {
+  // SFTP uses absolute paths with '/' delimiter
+  const trimmed = path.replace(/\/+$/, '');
+  const lastSlash = trimmed.lastIndexOf('/');
+  if (lastSlash <= 0) return '/';
+  return trimmed.substring(0, lastSlash);
+}
+
 const initialState = {
   activeConnectionId: null as string | null,
   activeProfile: null as ConnectionProfile | null,
@@ -107,6 +115,9 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       });
       if (profile.type === 's3') {
         await get().loadBuckets();
+      } else if (profile.type === 'sftp') {
+        const defaultPath = (profile as SftpConnectionProfile).defaultPath || '/';
+        await get().navigateTo(defaultPath);
       }
     } catch (err) {
       set({
@@ -150,11 +161,17 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   navigateTo: async (path: string) => {
-    const { activeConnectionId, currentBucket, sortField, sortDirection } = get();
-    if (!activeConnectionId || !currentBucket) return;
+    const { activeConnectionId, activeProfile, currentBucket, sortField, sortDirection } = get();
+    if (!activeConnectionId || !activeProfile) return;
+
+    // S3 requires a bucket to be selected before navigating
+    if (activeProfile.type === 's3' && !currentBucket) return;
+
     set({ isLoading: true, error: null, selectedFiles: new Set() });
     try {
-      const listing = await window.api.invoke('s3:list-objects', activeConnectionId, currentBucket, path);
+      const listing = activeProfile.type === 'sftp'
+        ? await window.api.invoke('sftp:list', activeConnectionId, path)
+        : await window.api.invoke('s3:list-objects', activeConnectionId, currentBucket!, path);
       set({
         currentPath: path,
         entries: sortEntries(listing.entries, sortField, sortDirection),
@@ -162,22 +179,32 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       });
     } catch (err) {
       set({
-        error: err instanceof Error ? err.message : 'Failed to list objects',
+        error: err instanceof Error ? err.message : 'Failed to list directory',
         isLoading: false,
       });
     }
   },
 
   navigateUp: async () => {
-    const { currentPath, navigateTo } = get();
-    if (!currentPath) return;
-    const parent = getParentPrefix(currentPath);
-    await navigateTo(parent);
+    const { currentPath, activeProfile, navigateTo } = get();
+    if (!activeProfile) return;
+
+    if (activeProfile.type === 'sftp') {
+      if (currentPath === '/') return;
+      const parent = getParentPath(currentPath);
+      await navigateTo(parent);
+    } else {
+      if (!currentPath) return;
+      const parent = getParentPrefix(currentPath);
+      await navigateTo(parent);
+    }
   },
 
   refresh: async () => {
-    const { currentPath, currentBucket, navigateTo, loadBuckets } = get();
-    if (currentBucket) {
+    const { currentPath, currentBucket, activeProfile, navigateTo, loadBuckets } = get();
+    if (activeProfile?.type === 'sftp') {
+      await navigateTo(currentPath);
+    } else if (currentBucket) {
       await navigateTo(currentPath);
     } else {
       await loadBuckets();
