@@ -1,6 +1,8 @@
 @import "tailwindcss";
-@import "geist/font/sans";
-@import "geist/font/mono";
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/geist-mono/400.css";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -68,13 +70,13 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-geist-sans), system-ui, sans-serif;
+    font-family: 'Geist Sans', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   code, .font-mono {
-    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-family: 'Geist Mono', ui-monospace, monospace;
   }
 
   /* Custom scrollbars */
