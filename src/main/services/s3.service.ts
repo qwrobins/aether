@@ -19,6 +19,7 @@ export class S3Service {
   connect(connectionId: string, profile: S3ConnectionProfile): void {
     const baseConfig: Record<string, unknown> = {
       region: profile.region,
+      followRegionRedirects: true,
     };
 
     if (profile.endpoint) {
