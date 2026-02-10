@@ -1,0 +1,93 @@
+
+{
+  "mcpServers": {
+    "aws": {
+      "command": "pnpm",
+      "args": ["--silent", "--prefix", "/home/qwrobins/rsc/development/mcp/aws-mcp", "start"]
+    },
+    "lp-linear": {
+      "command": "pnpm",
+      "args": ["--silent", "--prefix", "/home/qwrobins/rsc/development/mcp/lp-linear-mcp", "start"],
+      "env": {
+        "LINEAR_ACCESS_TOKEN": "lin_api_YLTDZS10zxM3B9Yh0W7I8GpDcKb4rcK59O9UQUJ7"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp", "--api-key", "ctx7sk-103c0c21-52be-4e1c-b367-36436d9eaf67"]
+    },
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://lpproduction:_nd2OmVeW2HRwP6StZgVjzgijNyKn2IZ@main-cluster-2-production.cluster-ro-cxlfzksp5aii.us-east-1.rds.amazonaws.com:5432/lp_core_production"
+      ]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"],
+      "env": {}
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest"]
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-sequential-thinking"],
+      "env": {}
+    },
+    "shadcn-components": {
+      "command": "npx",
+      "args": [
+        "@jpisnice/shadcn-ui-mcp-server"
+      ]
+    },
+    "shadcn-themes": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "shadcn@canary",
+        "registry:mcp"
+      ],
+      "env": {
+        "REGISTRY_URL": "https://tweakcn.com/r/themes/registry.json"
+      }
+    },
+    "slack": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-57183786064-10492541786720-OGUTfJMHnJsqJauhWFdkOKOA",
+        "SLACK_TEAM_ID": "T1P5DP41W",
+        "SLACK_CHANNEL_IDS": "C01K6PQ7E5B"
+      }
+    },
+    "datadog": {
+      "command": "npx",
+      "args": [
+        "datadog-mcp-server",
+        "--apiKey",
+        "017b56e084f31c5ae50c2d9b888afe44",
+        "--appKey",
+        "d15ca3e1ef7b8a64832313a1b29deaafe8b1bda2",
+        "--site",
+        "api.datadoghq.com"
+      ]
+    },
+    "lp-releases": {
+      "command": "npx",
+      "args": ["-y", "@luxury-presence/releases-mcp"]
+    },
+    "figma": {
+       "url": "https://mcp.figma.com/mcp",
+       "type": "http"
+     }
+  }
+}
