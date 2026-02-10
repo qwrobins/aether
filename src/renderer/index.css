@@ -136,3 +136,21 @@
   50% { border-color: oklch(0.62 0.25 280 / 0.6); }
 }
 
+/* Skeleton shimmer */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Gentle pulse for empty state icons */
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.45; }
+}
+
+/* File row entrance */
+@keyframes row-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

@@ -161,7 +161,8 @@ export function AppSidebar() {
                         tooltip={profile.name}
                         onClick={() => handleConnectionClick(profile.id)}
                         className={cn(
-                          activeConnectionId === profile.id && 'bg-white/[0.04]'
+                          activeConnectionId === profile.id &&
+                            'bg-[radial-gradient(ellipse_at_left,oklch(0.62_0.25_280/0.06),transparent_70%)]'
                         )}
                       >
                         <ConnectionStatusDot profileId={profile.id} />

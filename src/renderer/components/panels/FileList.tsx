@@ -25,6 +25,10 @@ interface FileListProps {
   onSelect: (path: string, multi: boolean) => void;
   onNavigate: (path: string) => void;
   onSort: (field: SortField) => void;
+  onDelete: (paths: string[]) => void;
+  onRename: (oldPath: string, newName: string) => void;
+  onNewFolder: () => void;
+  onTransfer: (entry: FileEntry) => void;
 }
 
 function SortIndicator({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) {
@@ -46,6 +50,10 @@ export function FileList({
   onSelect,
   onNavigate,
   onSort,
+  onDelete,
+  onRename,
+  onNewFolder,
+  onTransfer,
 }: FileListProps) {
   if (isLoading) {
     return (
@@ -62,11 +70,14 @@ export function FileList({
         </Table>
         <div className="flex-1 px-2">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="flex h-[34px] items-center gap-3 px-2">
-              <Skeleton className="h-4 w-4 rounded" />
-              <Skeleton className="h-3 flex-1 rounded" />
-              <Skeleton className="h-3 w-12 rounded" />
-              <Skeleton className="h-3 w-16 rounded" />
+            <div
+              key={i}
+              className="flex h-[34px] items-center gap-3 px-2"
+            >
+              <div className="h-4 w-4 shrink-0 rounded bg-gradient-to-r from-muted via-muted-foreground/10 to-muted bg-[length:200%_100%] animate-[skeleton-shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 80}ms` }} />
+              <div className="h-3 flex-1 rounded bg-gradient-to-r from-muted via-muted-foreground/10 to-muted bg-[length:200%_100%] animate-[skeleton-shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 80 + 40}ms` }} />
+              <div className="h-3 w-12 rounded bg-gradient-to-r from-muted via-muted-foreground/10 to-muted bg-[length:200%_100%] animate-[skeleton-shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 80 + 80}ms` }} />
+              <div className="h-3 w-16 rounded bg-gradient-to-r from-muted via-muted-foreground/10 to-muted bg-[length:200%_100%] animate-[skeleton-shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 80 + 120}ms` }} />
             </div>
           ))}
         </div>
@@ -121,14 +132,19 @@ export function FileList({
       <ScrollArea className="flex-1">
         <Table>
           <TableBody>
-            {entries.map((entry) => (
+            {entries.map((entry, index) => (
               <FileItem
                 key={entry.path}
                 entry={entry}
+                index={index}
                 isSelected={selectedFiles.has(entry.path)}
                 panelType={panelType}
                 onSelect={onSelect}
                 onNavigate={onNavigate}
+                onDelete={onDelete}
+                onRename={onRename}
+                onNewFolder={onNewFolder}
+                onTransfer={onTransfer}
               />
             ))}
           </TableBody>

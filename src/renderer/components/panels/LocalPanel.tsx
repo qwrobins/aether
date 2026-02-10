@@ -5,6 +5,7 @@ import { useTransferStore } from '@/stores/transferStore';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
+import type { FileEntry } from '@shared/types/filesystem';
 import type { TransferRequest } from '@shared/types/transfer';
 
 export function LocalPanel() {
@@ -98,6 +99,71 @@ export function LocalPanel() {
     [currentPath]
   );
 
+  const handleDelete = useCallback(
+    (paths: string[]) => {
+      if (confirm(`Delete ${paths.length} item(s)?`)) {
+        window.api.invoke('fs:delete', paths).then(() => refresh());
+      }
+    },
+    [refresh]
+  );
+
+  const handleRename = useCallback(
+    (oldPath: string, newName: string) => {
+      const newPath = oldPath.replace(/[^/]+$/, newName);
+      window.api.invoke('fs:rename', oldPath, newPath).then(() => refresh());
+    },
+    [refresh]
+  );
+
+  const handleNewFolder = useCallback(() => {
+    const name = prompt('New folder name:');
+    if (name) {
+      const newPath = currentPath + '/' + name;
+      window.api.invoke('fs:mkdir', newPath).then(() => refresh());
+    }
+  }, [currentPath, refresh]);
+
+  const handleTransfer = useCallback(
+    async (entry: FileEntry) => {
+      const { activeConnectionId, activeProfile, currentPath: remotePath, currentBucket } =
+        useRemotePanelStore.getState();
+      if (!activeConnectionId || !activeProfile) return;
+
+      const destPath =
+        activeProfile.type === 'sftp'
+          ? `${remotePath.replace(/\/+$/, '')}/${entry.name}`
+          : `${remotePath}${entry.name}`;
+
+      const request: TransferRequest = {
+        sourcePath: entry.path,
+        destinationPath: destPath,
+        direction: 'upload',
+        connectionId: activeConnectionId,
+        connectionType: activeProfile.type,
+        bucket: currentBucket || undefined,
+      };
+
+      const transferId = await window.api.invoke('transfer:start', request);
+      useTransferStore.getState().addTransfer({
+        id: transferId,
+        fileName: entry.name,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath,
+        direction: 'upload',
+        connectionId: activeConnectionId,
+        connectionType: activeProfile.type,
+        bucket: request.bucket,
+        size: entry.size || 0,
+        bytesTransferred: 0,
+        status: 'queued',
+        speed: 0,
+        retryCount: 0,
+      });
+    },
+    []
+  );
+
   return (
     <div
       className="relative flex h-full flex-col overflow-hidden"
@@ -132,6 +198,10 @@ export function LocalPanel() {
         onSelect={selectFile}
         onNavigate={navigateTo}
         onSort={setSort}
+        onDelete={handleDelete}
+        onRename={handleRename}
+        onNewFolder={handleNewFolder}
+        onTransfer={handleTransfer}
       />
     </div>
   );

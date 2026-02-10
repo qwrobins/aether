@@ -3,7 +3,7 @@ import { Gem } from 'lucide-react';
 export function TitleBar() {
   return (
     <div
-      className="flex h-[38px] shrink-0 items-center justify-between border-b border-border/50 bg-gradient-to-r from-surface to-[oklch(0.11_0.01_280)] px-4"
+      className="flex h-[38px] shrink-0 items-center justify-between border-b border-border/50 bg-gradient-to-r from-surface to-[oklch(0.11_0.01_280)] px-4 shadow-[0_1px_0_0_oklch(0.62_0.25_280/0.08)]"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center gap-2">

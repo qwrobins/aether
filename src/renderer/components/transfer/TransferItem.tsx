@@ -24,7 +24,12 @@ export function TransferItem({ transfer: t }: Props) {
   };
 
   return (
-    <div className="group flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-white/[0.02]">
+    <div
+      className={cn(
+        'group flex items-center gap-3 rounded-md px-2 py-1.5 transition-opacity duration-300 hover:bg-white/[0.02]',
+        t.status === 'completed' && 'opacity-50'
+      )}
+    >
       {/* Icon + filename */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="shrink-0">

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CloudOff, Database, ChevronLeft } from 'lucide-react';
+import type { FileEntry } from '@shared/types/filesystem';
 import type { TransferRequest } from '@shared/types/transfer';
 
 function BucketList() {
@@ -194,6 +195,99 @@ export function RemotePanel() {
     [activeConnectionId, activeProfile, currentPath, currentBucket]
   );
 
+  const handleDelete = useCallback(
+    (paths: string[]) => {
+      if (!activeConnectionId || !activeProfile) return;
+      if (!confirm(`Delete ${paths.length} remote item(s)?`)) return;
+
+      if (activeProfile.type === 's3') {
+        Promise.all(
+          paths.map((p) =>
+            window.api.invoke('s3:delete-object', activeConnectionId, currentBucket!, p)
+          )
+        ).then(() => refresh());
+      } else if (activeProfile.type === 'sftp') {
+        window.api
+          .invoke('sftp:delete', activeConnectionId, paths)
+          .then(() => refresh());
+      }
+    },
+    [activeConnectionId, activeProfile, currentBucket, refresh]
+  );
+
+  const handleRename = useCallback(
+    (oldPath: string, newName: string) => {
+      if (!activeConnectionId || !activeProfile) return;
+
+      if (activeProfile.type === 'sftp') {
+        const newPath = oldPath.replace(/[^/]+$/, newName);
+        window.api
+          .invoke('sftp:rename', activeConnectionId, oldPath, newPath)
+          .then(() => refresh());
+      }
+      // S3 doesn't support rename natively
+    },
+    [activeConnectionId, activeProfile, refresh]
+  );
+
+  const handleNewFolder = useCallback(() => {
+    if (!activeConnectionId || !activeProfile) return;
+    const name = prompt('New folder name:');
+    if (!name) return;
+
+    if (activeProfile.type === 's3' && currentBucket) {
+      const key = `${currentPath}${name}/`;
+      window.api
+        .invoke('s3:create-folder', activeConnectionId, currentBucket, key)
+        .then(() => refresh());
+    } else if (activeProfile.type === 'sftp') {
+      const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
+      window.api
+        .invoke('sftp:mkdir', activeConnectionId, newPath)
+        .then(() => refresh());
+    }
+  }, [activeConnectionId, activeProfile, currentBucket, currentPath, refresh]);
+
+  const handleTransfer = useCallback(
+    async (entry: FileEntry) => {
+      if (!activeConnectionId || !activeProfile) return;
+      const localPath = useLocalPanelStore.getState().currentPath;
+
+      const request: TransferRequest = {
+        sourcePath: entry.path,
+        destinationPath: `${localPath}/${entry.name}`,
+        direction: 'download',
+        connectionId: activeConnectionId,
+        connectionType: activeProfile.type,
+        bucket: currentBucket || undefined,
+      };
+
+      const transferId = await window.api.invoke('transfer:start', request);
+      useTransferStore.getState().addTransfer({
+        id: transferId,
+        fileName: entry.name,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath,
+        direction: 'download',
+        connectionId: activeConnectionId,
+        connectionType: activeProfile.type,
+        bucket: request.bucket,
+        size: entry.size || 0,
+        bytesTransferred: 0,
+        status: 'queued',
+        speed: 0,
+        retryCount: 0,
+      });
+    },
+    [activeConnectionId, activeProfile, currentBucket]
+  );
+
+  // Noop handlers for states without file browsing
+  const noopDelete = useCallback(() => {}, []);
+  const noopRename = useCallback(() => {}, []);
+  const noopNewFolder = useCallback(() => {}, []);
+  const noopTransfer = useCallback(() => {}, []);
+
   // State 1: No connection
   if (!activeConnectionId) {
     return (
@@ -255,6 +349,10 @@ export function RemotePanel() {
           onSelect={selectFile}
           onNavigate={navigateTo}
           onSort={setSort}
+          onDelete={handleDelete}
+          onRename={handleRename}
+          onNewFolder={handleNewFolder}
+          onTransfer={handleTransfer}
         />
       </div>
     );
@@ -319,6 +417,10 @@ export function RemotePanel() {
         onSelect={selectFile}
         onNavigate={navigateTo}
         onSort={setSort}
+        onDelete={handleDelete}
+        onRename={handleRename}
+        onNewFolder={handleNewFolder}
+        onTransfer={handleTransfer}
       />
     </div>
   );
