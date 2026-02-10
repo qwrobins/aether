@@ -29,7 +29,15 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle(IpcChannels.S3_LIST_PROFILES, async () => {
-    return s3Service.listAwsProfiles();
+    console.log('[Aether] s3:list-profiles called');
+    try {
+      const profiles = await s3Service.listAwsProfiles();
+      console.log('[Aether] Found AWS profiles:', profiles);
+      return profiles;
+    } catch (err) {
+      console.error('[Aether] Failed to list AWS profiles:', err);
+      throw err;
+    }
   });
 
   ipcMain.handle(
