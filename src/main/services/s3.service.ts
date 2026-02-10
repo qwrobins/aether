@@ -6,8 +6,10 @@ import {
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { IAMClient, ListRolesCommand } from '@aws-sdk/client-iam';
-import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
-import { fromTemporaryCredentials } from '@aws-sdk/credential-providers';
+import { fromTemporaryCredentials, fromIni } from '@aws-sdk/credential-providers';
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { S3ConnectionProfile } from '@shared/types/connection';
 
@@ -52,9 +54,13 @@ export class S3Service {
         };
       }
       baseConfig.credentials = fromTemporaryCredentials(params as any);
+    } else if (profile.authMethod === 'profile') {
+      if (!profile.awsProfile) {
+        throw new Error('AWS profile name is required');
+      }
+      baseConfig.credentials = fromIni({ profile: profile.awsProfile });
     }
     // 'default-chain' — no credentials specified, SDK uses default provider chain
-    // (env vars, ~/.aws/credentials, EC2 instance role, etc.)
 
     const client = new S3Client(baseConfig as any);
     this.clients.set(connectionId, client);
@@ -72,6 +78,32 @@ export class S3Service {
     const client = this.clients.get(connectionId);
     if (!client) throw new Error('Not connected');
     return client;
+  }
+
+  async listAwsProfiles(): Promise<string[]> {
+    const profiles = new Set<string>();
+    const awsDir = path.join(homedir(), '.aws');
+
+    for (const file of ['credentials', 'config']) {
+      try {
+        const content = await readFile(path.join(awsDir, file), 'utf-8');
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim();
+          // [profile foo] in config, [foo] in credentials
+          let match = trimmed.match(/^\[profile\s+(.+)\]$/);
+          if (!match) match = trimmed.match(/^\[(.+)\]$/);
+          if (match && match[1] !== 'default') {
+            profiles.add(match[1]);
+          } else if (match) {
+            profiles.add('default');
+          }
+        }
+      } catch {
+        // File doesn't exist, skip
+      }
+    }
+
+    return Array.from(profiles).sort();
   }
 
   async listRoles(

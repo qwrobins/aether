@@ -28,6 +28,10 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
     await sftpService.disconnect(id);
   });
 
+  ipcMain.handle(IpcChannels.S3_LIST_PROFILES, async () => {
+    return s3Service.listAwsProfiles();
+  });
+
   ipcMain.handle(
     IpcChannels.S3_LIST_ROLES,
     async (_event, region: string, accessKeyId?: string, secretAccessKey?: string) => {
