@@ -1,6 +1,7 @@
 import {
   S3Client,
   ListBucketsCommand,
+  GetBucketLocationCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
   PutObjectCommand,
@@ -15,6 +16,7 @@ import type { S3ConnectionProfile } from '@shared/types/connection';
 
 export class S3Service {
   private clients: Map<string, S3Client> = new Map();
+  private regions: Map<string, string> = new Map();
 
   connect(connectionId: string, profile: S3ConnectionProfile): void {
     const baseConfig: Record<string, unknown> = {
@@ -65,6 +67,7 @@ export class S3Service {
 
     const client = new S3Client(baseConfig as any);
     this.clients.set(connectionId, client);
+    this.regions.set(connectionId, profile.region);
   }
 
   disconnect(connectionId: string): void {
@@ -72,6 +75,7 @@ export class S3Service {
     if (client) {
       client.destroy();
       this.clients.delete(connectionId);
+      this.regions.delete(connectionId);
     }
   }
 
@@ -139,8 +143,26 @@ export class S3Service {
 
   async listBuckets(connectionId: string): Promise<string[]> {
     const client = this.getClient(connectionId);
+    const configuredRegion = this.regions.get(connectionId) || 'us-east-1';
     const result = await client.send(new ListBucketsCommand({}));
-    return (result.Buckets || []).map((b) => b.Name!).filter(Boolean);
+    const allBuckets = (result.Buckets || []).map((b) => b.Name!).filter(Boolean);
+
+    // Filter to only buckets in the configured region
+    const filtered: string[] = [];
+    for (const bucket of allBuckets) {
+      try {
+        const loc = await client.send(new GetBucketLocationCommand({ Bucket: bucket }));
+        // AWS returns null/empty for us-east-1
+        const bucketRegion = loc.LocationConstraint || 'us-east-1';
+        if (bucketRegion === configuredRegion) {
+          filtered.push(bucket);
+        }
+      } catch {
+        // Can't determine region — skip bucket
+      }
+    }
+
+    return filtered;
   }
 
   async listObjects(
