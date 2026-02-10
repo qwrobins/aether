@@ -8,6 +8,7 @@ export const IpcChannels = {
   FS_OPEN_IN_EXPLORER: 'fs:open-in-explorer',
 
   // S3
+  S3_LIST_ROLES: 's3:list-roles',
   S3_LIST_BUCKETS: 's3:list-buckets',
   S3_LIST_OBJECTS: 's3:list-objects',
   S3_DELETE_OBJECT: 's3:delete-object',
