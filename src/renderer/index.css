@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "geist/font/sans";
 @import "geist/font/mono";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 @theme {
   /* Base — warm-tinted darks */
@@ -43,8 +46,10 @@
   --color-sidebar: oklch(0.08 0.01 280);
   --color-sidebar-foreground: oklch(0.90 0.01 260);
   --color-sidebar-border: oklch(0.18 0.012 280);
-  --color-sidebar-accent: oklch(0.62 0.25 280);
-  --color-sidebar-accent-foreground: oklch(0.98 0 0);
+  --color-sidebar-primary: oklch(0.62 0.25 280);
+  --color-sidebar-primary-foreground: oklch(0.98 0 0);
+  --color-sidebar-accent: oklch(0.16 0.012 280);
+  --color-sidebar-accent-foreground: oklch(0.90 0.01 260);
   --color-sidebar-muted: oklch(0.14 0.01 280);
   --color-sidebar-muted-foreground: oklch(0.55 0.015 270);
   --color-sidebar-ring: oklch(0.62 0.25 280);
@@ -58,7 +63,7 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
 
   body {
@@ -130,3 +135,4 @@
   0%, 100% { border-color: oklch(0.62 0.25 280 / 0.3); }
   50% { border-color: oklch(0.62 0.25 280 / 0.6); }
 }
+
