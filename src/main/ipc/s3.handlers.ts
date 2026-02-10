@@ -29,6 +29,13 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
   });
 
   ipcMain.handle(
+    IpcChannels.S3_LIST_ROLES,
+    async (_event, region: string, accessKeyId?: string, secretAccessKey?: string) => {
+      return s3Service.listRoles(region, accessKeyId, secretAccessKey);
+    },
+  );
+
+  ipcMain.handle(
     IpcChannels.S3_LIST_BUCKETS,
     async (_event, connectionId: string) => {
       return s3Service.listBuckets(connectionId);

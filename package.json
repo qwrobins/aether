@@ -45,7 +45,10 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@aws-sdk/client-iam": "^3.986.0",
     "@aws-sdk/client-s3": "^3.986.0",
+    "@aws-sdk/client-sts": "^3.986.0",
+    "@aws-sdk/credential-providers": "^3.986.0",
     "@aws-sdk/lib-storage": "^3.986.0",
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/geist-sans": "^5.2.5",

@@ -12,6 +12,7 @@ export interface IpcInvokeMap {
   'fs:open-in-explorer': { args: [path: string]; return: void };
 
   // S3
+  's3:list-roles': { args: [region: string, accessKeyId?: string, secretAccessKey?: string]; return: Array<{ arn: string; name: string }> };
   's3:list-buckets': { args: [connectionId: string]; return: string[] };
   's3:list-objects': { args: [connectionId: string, bucket: string, prefix: string]; return: DirectoryListing };
   's3:delete-object': { args: [connectionId: string, bucket: string, key: string]; return: void };
