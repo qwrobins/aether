@@ -13,6 +13,12 @@ export const IpcChannels = {
   S3_DELETE_OBJECT: 's3:delete-object',
   S3_CREATE_FOLDER: 's3:create-folder',
 
+  // SFTP
+  SFTP_LIST: 'sftp:list',
+  SFTP_MKDIR: 'sftp:mkdir',
+  SFTP_DELETE: 'sftp:delete',
+  SFTP_RENAME: 'sftp:rename',
+
   // Connections
   CONN_SAVE: 'conn:save',
   CONN_DELETE: 'conn:delete',

@@ -103,7 +103,40 @@ export function RemotePanel() {
     );
   }
 
-  // State 2: Connected to S3, selecting bucket
+  // State 2: SFTP connected — direct file browsing (no bucket selection)
+  if (activeProfile?.type === 'sftp') {
+    return (
+      <div className="flex h-full flex-col overflow-hidden">
+        <PanelHeader
+          label={`SFTP: ${activeProfile.name}`}
+          path={currentPath}
+          isActive={true}
+          onNavigate={navigateTo}
+          onRefresh={refresh}
+        />
+
+        {error && (
+          <div className="px-3 py-2 text-[12px] text-destructive bg-destructive/5 border-b border-destructive/20">
+            {error}
+          </div>
+        )}
+
+        <FileList
+          entries={entries}
+          selectedFiles={selectedFiles}
+          isLoading={isLoading}
+          sortField={sortField}
+          sortDirection={sortDirection}
+          viewMode={viewMode}
+          onSelect={selectFile}
+          onNavigate={navigateTo}
+          onSort={setSort}
+        />
+      </div>
+    );
+  }
+
+  // State 3: S3 connected, selecting bucket
   if (activeProfile?.type === 's3' && !currentBucket) {
     return (
       <div className="flex h-full flex-col overflow-hidden">
@@ -119,7 +152,7 @@ export function RemotePanel() {
     );
   }
 
-  // State 3: Browsing objects in a bucket
+  // State 4: S3 browsing objects in a bucket
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <PanelHeader

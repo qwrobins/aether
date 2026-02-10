@@ -16,6 +16,12 @@ export interface IpcInvokeMap {
   's3:delete-object': { args: [connectionId: string, bucket: string, key: string]; return: void };
   's3:create-folder': { args: [connectionId: string, bucket: string, key: string]; return: void };
 
+  // SFTP
+  'sftp:list': { args: [connectionId: string, path: string]; return: DirectoryListing };
+  'sftp:mkdir': { args: [connectionId: string, path: string]; return: void };
+  'sftp:delete': { args: [connectionId: string, paths: string[]]; return: void };
+  'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
+
   // Connections
   'conn:save': { args: [profile: ConnectionProfile]; return: string };
   'conn:delete': { args: [id: string]; return: void };
