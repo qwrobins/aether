@@ -163,7 +163,7 @@ export function LocalPanel() {
 
   return (
     <div
-      className="relative flex h-full flex-col overflow-hidden"
+      className="relative flex min-h-0 h-full flex-col overflow-hidden"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

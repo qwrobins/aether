@@ -291,7 +291,7 @@ export function RemotePanel() {
   // State 1: No connection
   if (!activeConnectionId) {
     return (
-      <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 h-full flex-col overflow-hidden">
         <PanelHeader label="Remote" path="" isActive={false} onNavigate={() => {}} onRefresh={() => {}} />
         {connectionStatus === 'connecting' ? (
           <div className="flex flex-1 items-center justify-center">
@@ -317,7 +317,7 @@ export function RemotePanel() {
   if (activeProfile?.type === 'sftp') {
     return (
       <div
-        className="relative flex h-full flex-col overflow-hidden"
+        className="relative flex min-h-0 h-full flex-col overflow-hidden"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -361,7 +361,7 @@ export function RemotePanel() {
   // State 3: S3 connected, selecting bucket
   if (activeProfile?.type === 's3' && !currentBucket) {
     return (
-      <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex min-h-0 h-full flex-col overflow-hidden">
         <PanelHeader
           label={`S3: ${activeProfile.name}`}
           path=""
@@ -377,7 +377,7 @@ export function RemotePanel() {
   // State 4: S3 browsing objects in a bucket
   return (
     <div
-      className="relative flex h-full flex-col overflow-hidden"
+      className="relative flex min-h-0 h-full flex-col overflow-hidden"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
