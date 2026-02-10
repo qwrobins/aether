@@ -16,8 +16,14 @@ interface ConnectionFormProps {
 const S3_DEFAULTS: Record<string, string> = {
   name: '',
   region: 'us-east-1',
+  authMethod: 'credentials',
   accessKeyId: '',
   secretAccessKey: '',
+  roleArn: '',
+  externalId: '',
+  sourceAccessKeyId: '',
+  sourceSecretAccessKey: '',
+  awsProfile: '',
   defaultBucket: '',
   endpoint: '',
 };
@@ -39,8 +45,14 @@ function profileToFormData(profile: ConnectionProfile): Record<string, string> {
     return {
       name: profile.name,
       region: profile.region,
-      accessKeyId: profile.accessKeyId,
-      secretAccessKey: profile.secretAccessKey,
+      authMethod: profile.authMethod ?? 'credentials',
+      accessKeyId: profile.accessKeyId ?? '',
+      secretAccessKey: profile.secretAccessKey ?? '',
+      roleArn: profile.roleArn ?? '',
+      externalId: profile.externalId ?? '',
+      sourceAccessKeyId: profile.sourceAccessKeyId ?? '',
+      sourceSecretAccessKey: profile.sourceSecretAccessKey ?? '',
+      awsProfile: profile.awsProfile ?? '',
       defaultBucket: profile.defaultBucket ?? '',
       endpoint: profile.endpoint ?? '',
     };
@@ -101,10 +113,18 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
     onSave({ ...formData, type: activeTab });
   }, [formData, activeTab, onSave]);
 
-  const isValid =
-    activeTab === 's3'
-      ? Boolean(formData.name && formData.accessKeyId && formData.secretAccessKey)
-      : Boolean(formData.name && formData.host && formData.username);
+  const isValid = (() => {
+    if (!formData.name) return false;
+    if (activeTab === 'sftp') {
+      return Boolean(formData.host && formData.username);
+    }
+    // S3 validation depends on auth method
+    const authMethod = formData.authMethod || 'credentials';
+    if (authMethod === 'credentials') return Boolean(formData.accessKeyId && formData.secretAccessKey);
+    if (authMethod === 'profile') return Boolean(formData.awsProfile);
+    if (authMethod === 'iam-role') return Boolean(formData.roleArn);
+    return true; // default-chain needs no extra fields
+  })();
 
   return (
     <div className="flex flex-1 flex-col">
