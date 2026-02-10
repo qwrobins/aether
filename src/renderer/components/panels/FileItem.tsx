@@ -4,9 +4,12 @@ import { FileSize } from '@/components/shared/FileSize';
 import { TableRow, TableCell } from '@/components/ui/table';
 import type { FileEntry } from '@shared/types/filesystem';
 
+export type PanelType = 'local' | 'remote';
+
 interface FileItemProps {
   entry: FileEntry;
   isSelected: boolean;
+  panelType: PanelType;
   onSelect: (path: string, multi: boolean) => void;
   onNavigate: (path: string) => void;
 }
@@ -28,7 +31,23 @@ function formatRelativeTime(isoString: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function FileItem({ entry, isSelected, onSelect, onNavigate }: FileItemProps) {
+export function FileItem({ entry, isSelected, panelType, onSelect, onNavigate }: FileItemProps) {
+  const handleDragStart = (e: React.DragEvent) => {
+    const payload = {
+      panelType,
+      entries: [
+        {
+          name: entry.name,
+          path: entry.path,
+          size: entry.size,
+          isDirectory: entry.isDirectory,
+        },
+      ],
+    };
+    e.dataTransfer.setData('application/aether-transfer', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
   return (
     <TableRow
       className={cn(
@@ -37,6 +56,8 @@ export function FileItem({ entry, isSelected, onSelect, onNavigate }: FileItemPr
         isSelected && 'bg-primary/8 shadow-[inset_2px_0_0_0_var(--color-primary)]'
       )}
       data-state={isSelected ? 'selected' : undefined}
+      draggable
+      onDragStart={handleDragStart}
       onClick={(e) => onSelect(entry.path, e.ctrlKey || e.metaKey)}
       onDoubleClick={() => {
         if (entry.isDirectory) onNavigate(entry.path);

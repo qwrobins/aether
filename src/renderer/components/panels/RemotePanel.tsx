@@ -1,10 +1,15 @@
+import { useState, useCallback } from 'react';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
+import { useLocalPanelStore } from '@/stores/localPanelStore';
+import { useTransferStore } from '@/stores/transferStore';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
+import { DropZone } from './DropZone';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CloudOff, Database, ChevronLeft } from 'lucide-react';
+import type { TransferRequest } from '@shared/types/transfer';
 
 function BucketList() {
   const { buckets, isLoading, error, selectBucket } = useRemotePanelStore();
@@ -78,6 +83,117 @@ export function RemotePanel() {
     setSort,
   } = useRemotePanelStore();
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    // Accept internal drops from local panel and OS file drops
+    if (
+      e.dataTransfer.types.includes('application/aether-transfer') ||
+      e.dataTransfer.types.includes('Files')
+    ) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragOver(false);
+
+      if (!activeConnectionId || !activeProfile) return;
+
+      // Handle internal drag from local panel
+      const raw = e.dataTransfer.getData('application/aether-transfer');
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw);
+          if (payload.panelType !== 'local') return;
+
+          for (const entry of payload.entries) {
+            const destPath = activeProfile.type === 'sftp'
+              ? `${currentPath.replace(/\/+$/, '')}/${entry.name}`
+              : `${currentPath}${entry.name}`;
+
+            const request: TransferRequest = {
+              sourcePath: entry.path,
+              destinationPath: destPath,
+              direction: 'upload',
+              connectionId: activeConnectionId,
+              connectionType: activeProfile.type,
+              bucket: currentBucket || undefined,
+            };
+
+            const transferId = await window.api.invoke('transfer:start', request);
+            useTransferStore.getState().addTransfer({
+              id: transferId,
+              fileName: entry.name,
+              sourcePath: request.sourcePath,
+              destinationPath: request.destinationPath,
+              direction: 'upload',
+              connectionId: activeConnectionId,
+              connectionType: activeProfile.type,
+              bucket: request.bucket,
+              size: entry.size || 0,
+              bytesTransferred: 0,
+              status: 'queued',
+              speed: 0,
+              retryCount: 0,
+            });
+          }
+        } catch {
+          // Invalid transfer data
+        }
+        return;
+      }
+
+      // Handle OS file drops (files from system file manager)
+      if (e.dataTransfer.files.length > 0) {
+        for (const file of Array.from(e.dataTransfer.files)) {
+          const filePath = (file as File & { path?: string }).path;
+          if (!filePath) continue;
+
+          const destPath = activeProfile.type === 'sftp'
+            ? `${currentPath.replace(/\/+$/, '')}/${file.name}`
+            : `${currentPath}${file.name}`;
+
+          const request: TransferRequest = {
+            sourcePath: filePath,
+            destinationPath: destPath,
+            direction: 'upload',
+            connectionId: activeConnectionId,
+            connectionType: activeProfile.type,
+            bucket: currentBucket || undefined,
+          };
+
+          const transferId = await window.api.invoke('transfer:start', request);
+          useTransferStore.getState().addTransfer({
+            id: transferId,
+            fileName: file.name,
+            sourcePath: filePath,
+            destinationPath: destPath,
+            direction: 'upload',
+            connectionId: activeConnectionId,
+            connectionType: activeProfile.type,
+            bucket: request.bucket,
+            size: file.size,
+            bytesTransferred: 0,
+            status: 'queued',
+            speed: 0,
+            retryCount: 0,
+          });
+        }
+      }
+    },
+    [activeConnectionId, activeProfile, currentPath, currentBucket]
+  );
+
   // State 1: No connection
   if (!activeConnectionId) {
     return (
@@ -106,7 +222,14 @@ export function RemotePanel() {
   // State 2: SFTP connected — direct file browsing (no bucket selection)
   if (activeProfile?.type === 'sftp') {
     return (
-      <div className="flex h-full flex-col overflow-hidden">
+      <div
+        className="relative flex h-full flex-col overflow-hidden"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <DropZone isActive={isDragOver} direction="upload" />
+
         <PanelHeader
           label={`SFTP: ${activeProfile.name}`}
           path={currentPath}
@@ -128,6 +251,7 @@ export function RemotePanel() {
           sortField={sortField}
           sortDirection={sortDirection}
           viewMode={viewMode}
+          panelType="remote"
           onSelect={selectFile}
           onNavigate={navigateTo}
           onSort={setSort}
@@ -154,7 +278,14 @@ export function RemotePanel() {
 
   // State 4: S3 browsing objects in a bucket
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div
+      className="relative flex h-full flex-col overflow-hidden"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <DropZone isActive={isDragOver} direction="upload" />
+
       <PanelHeader
         label={`S3: ${currentBucket}`}
         path={currentPath}
@@ -184,6 +315,7 @@ export function RemotePanel() {
         sortField={sortField}
         sortDirection={sortDirection}
         viewMode={viewMode}
+        panelType="remote"
         onSelect={selectFile}
         onNavigate={navigateTo}
         onSort={setSort}

@@ -36,7 +36,7 @@ export class SftpService {
     }
   }
 
-  private getClient(connectionId: string): SftpClient {
+  getClient(connectionId: string): SftpClient {
     const client = this.clients.get(connectionId);
     if (!client) throw new Error('Not connected');
     return client;

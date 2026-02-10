@@ -26,6 +26,17 @@ export const IpcChannels = {
   CONN_TEST: 'conn:test',
   CONN_CONNECT: 'conn:connect',
   CONN_DISCONNECT: 'conn:disconnect',
+
+  // Transfers
+  TRANSFER_START: 'transfer:start',
+  TRANSFER_CANCEL: 'transfer:cancel',
+  TRANSFER_CLEAR: 'transfer:clear',
+  TRANSFER_LIST: 'transfer:list',
+
+  // Transfer events (main -> renderer)
+  TRANSFER_PROGRESS: 'transfer:progress',
+  TRANSFER_COMPLETE: 'transfer:complete',
+  TRANSFER_ERROR: 'transfer:error',
 } as const;
 
 export type IpcChannel = typeof IpcChannels[keyof typeof IpcChannels];

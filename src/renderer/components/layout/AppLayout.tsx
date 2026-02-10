@@ -8,6 +8,7 @@ import { TitleBar } from './TitleBar';
 import { AppSidebar } from './AppSidebar';
 import { LocalPanel } from '@/components/panels/LocalPanel';
 import { RemotePanel } from '@/components/panels/RemotePanel';
+import { TransferQueue } from '@/components/transfer/TransferQueue';
 
 export function AppLayout() {
   return (
@@ -17,7 +18,7 @@ export function AppLayout() {
         <div className="flex flex-1 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex flex-1 flex-col overflow-hidden">
-            <ResizablePanelGroup direction="horizontal">
+            <ResizablePanelGroup direction="horizontal" className="flex-1">
               <ResizablePanel defaultSize={50} minSize={25}>
                 <LocalPanel />
               </ResizablePanel>
@@ -26,6 +27,7 @@ export function AppLayout() {
                 <RemotePanel />
               </ResizablePanel>
             </ResizablePanelGroup>
+            <TransferQueue />
           </SidebarInset>
         </div>
       </SidebarProvider>
