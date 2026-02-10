@@ -28,6 +28,8 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
   const [roles, setRoles] = useState<Array<{ arn: string; name: string }>>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [rolesError, setRolesError] = useState<string | null>(null);
+  const [awsProfiles, setAwsProfiles] = useState<string[]>([]);
+  const [loadingProfiles, setLoadingProfiles] = useState(false);
 
   async function fetchRoles() {
     if (!window.api?.invoke) return;
@@ -47,10 +49,25 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
     }
   }
 
-  // Fetch roles when auth method changes to iam-role
+  async function fetchAwsProfiles() {
+    if (!window.api?.invoke) return;
+    setLoadingProfiles(true);
+    try {
+      const result = await window.api.invoke('s3:list-profiles');
+      setAwsProfiles(result);
+    } catch {
+      // Silently fail — user can type manually
+    } finally {
+      setLoadingProfiles(false);
+    }
+  }
+
   useEffect(() => {
     if (authMethod === 'iam-role' && roles.length === 0) {
       fetchRoles();
+    }
+    if (authMethod === 'profile' && awsProfiles.length === 0) {
+      fetchAwsProfiles();
     }
   }, [authMethod]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,14 +113,16 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="credentials">Access Keys</SelectItem>
+            <SelectItem value="profile">AWS Profile (~/.aws)</SelectItem>
             <SelectItem value="iam-role">IAM Role (AssumeRole)</SelectItem>
             <SelectItem value="default-chain">Default Credential Chain</SelectItem>
           </SelectContent>
         </Select>
         <p className="text-[11px] text-muted-foreground/60">
           {authMethod === 'credentials' && 'Use an IAM access key ID and secret key.'}
+          {authMethod === 'profile' && 'Use a named profile from ~/.aws/credentials or ~/.aws/config.'}
           {authMethod === 'iam-role' && 'Assume an IAM role using STS. Optionally provide source credentials.'}
-          {authMethod === 'default-chain' && 'Uses AWS_ACCESS_KEY_ID env vars, ~/.aws/credentials, or instance profile.'}
+          {authMethod === 'default-chain' && 'Uses env vars, ~/.aws/credentials, SSO, or instance profile automatically.'}
         </p>
       </div>
 
@@ -129,6 +148,55 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
             />
           </div>
         </>
+      )}
+
+      {authMethod === 'profile' && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="s3-profile">AWS Profile</Label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={fetchAwsProfiles}
+              disabled={loadingProfiles}
+            >
+              {loadingProfiles ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              <span className="ml-1">Refresh</span>
+            </Button>
+          </div>
+          {awsProfiles.length > 0 ? (
+            <Select
+              value={formData.awsProfile ?? ''}
+              onValueChange={(value) => onChange('awsProfile', value)}
+            >
+              <SelectTrigger id="s3-profile" className="w-full">
+                <SelectValue placeholder="Select a profile" />
+              </SelectTrigger>
+              <SelectContent>
+                {awsProfiles.map((profile) => (
+                  <SelectItem key={profile} value={profile}>
+                    <span className="font-mono text-[13px]">{profile}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="s3-profile"
+              placeholder="default"
+              value={formData.awsProfile ?? ''}
+              onChange={(e) => onChange('awsProfile', e.target.value)}
+            />
+          )}
+          <p className="text-[11px] text-muted-foreground/60">
+            Profiles found in ~/.aws/credentials and ~/.aws/config
+          </p>
+        </div>
       )}
 
       {authMethod === 'iam-role' && (

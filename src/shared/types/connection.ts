@@ -9,7 +9,7 @@ export interface BaseConnectionProfile {
   updatedAt: string;
 }
 
-export type S3AuthMethod = 'credentials' | 'iam-role' | 'default-chain';
+export type S3AuthMethod = 'credentials' | 'iam-role' | 'profile' | 'default-chain';
 
 export interface S3ConnectionProfile extends BaseConnectionProfile {
   type: 's3';
@@ -23,6 +23,8 @@ export interface S3ConnectionProfile extends BaseConnectionProfile {
   externalId?: string;
   sourceAccessKeyId?: string;
   sourceSecretAccessKey?: string;
+  // For 'profile' auth
+  awsProfile?: string;
   // Common
   defaultBucket?: string;
   endpoint?: string;
