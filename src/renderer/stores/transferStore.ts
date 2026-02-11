@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useUiStore } from './uiStore';
 import type { TransferItem, TransferProgress, TransferResult } from '@shared/types/transfer';
 
 interface TransferState {
@@ -10,6 +11,7 @@ interface TransferState {
   markError: (transferId: string, error: string) => void;
   removeTransfer: (id: string) => void;
   clearCompleted: () => void;
+  clearSuccessful: () => void;
   setTransfers: (transfers: TransferItem[]) => void;
 
   // Computed helpers
@@ -21,7 +23,11 @@ interface TransferState {
 export const useTransferStore = create<TransferState>((set, get) => ({
   transfers: [],
 
-  addTransfer: (item) => set((s) => ({ transfers: [...s.transfers, item] })),
+  addTransfer: (item) => {
+    set((s) => ({ transfers: [...s.transfers, item] }));
+    // Auto-expand the transfer queue so progress bars are visible
+    useUiStore.setState({ transferQueueExpanded: true });
+  },
 
   updateProgress: (progress) =>
     set((s) => ({
@@ -67,6 +73,11 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       transfers: s.transfers.filter(
         (t) => !['completed', 'failed', 'cancelled'].includes(t.status)
       ),
+    })),
+
+  clearSuccessful: () =>
+    set((s) => ({
+      transfers: s.transfers.filter((t) => t.status !== 'completed'),
     })),
 
   setTransfers: (transfers) => set({ transfers }),

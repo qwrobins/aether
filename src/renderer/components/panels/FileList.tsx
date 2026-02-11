@@ -22,7 +22,7 @@ interface FileListProps {
   sortDirection: SortDirection;
   viewMode: ViewMode;
   panelType: PanelType;
-  onSelect: (path: string, multi: boolean) => void;
+  onSelect: (path: string, multi: boolean, shift?: boolean) => void;
   onNavigate: (path: string) => void;
   onSort: (field: SortField) => void;
   onDelete: (paths: string[]) => void;
@@ -138,6 +138,8 @@ export function FileList({
                 entry={entry}
                 index={index}
                 isSelected={selectedFiles.has(entry.path)}
+                allEntries={entries}
+                selectedFiles={selectedFiles}
                 panelType={panelType}
                 onSelect={onSelect}
                 onNavigate={onNavigate}

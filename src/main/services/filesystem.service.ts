@@ -53,6 +53,25 @@ export class FilesystemService {
     };
   }
 
+  /** Recursively list all files (not directories) under a path. Returns full paths. */
+  async listFilesRecursive(dirPath: string): Promise<Array<{ path: string; relativePath: string }>> {
+    const results: Array<{ path: string; relativePath: string }> = [];
+    const walk = async (currentDir: string, relativePrefix: string) => {
+      const dirents = await readdir(currentDir, { withFileTypes: true });
+      for (const dirent of dirents) {
+        const fullPath = join(currentDir, dirent.name);
+        const relativePath = relativePrefix ? `${relativePrefix}/${dirent.name}` : dirent.name;
+        if (dirent.isDirectory()) {
+          await walk(fullPath, relativePath);
+        } else {
+          results.push({ path: fullPath, relativePath });
+        }
+      }
+    };
+    await walk(dirPath, '');
+    return results;
+  }
+
   async stat(filePath: string): Promise<FileEntry> {
     const stats = await fsStat(filePath);
     return {

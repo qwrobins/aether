@@ -126,6 +126,13 @@
   100% { background-position: 200% 0; }
 }
 
+/* Indeterminate progress bar animation */
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(150%); }
+  100% { transform: translateX(-100%); }
+}
+
 /* Status dot pulse */
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }

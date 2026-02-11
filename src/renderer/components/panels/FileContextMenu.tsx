@@ -12,6 +12,8 @@ import type { FileEntry } from '@shared/types/filesystem';
 interface FileContextMenuProps {
   children: React.ReactNode;
   entry: FileEntry;
+  isSelected: boolean;
+  selectedFiles: Set<string>;
   panelType: 'local' | 'remote';
   onNavigate: (path: string) => void;
   onDelete: (paths: string[]) => void;
@@ -23,6 +25,8 @@ interface FileContextMenuProps {
 export function FileContextMenu({
   children,
   entry,
+  isSelected,
+  selectedFiles,
   panelType,
   onNavigate,
   onDelete,
@@ -69,7 +73,16 @@ export function FileContextMenu({
           Copy Path
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => onDelete([entry.path])} className="text-destructive focus:text-destructive">
+        <ContextMenuItem
+          onClick={() => {
+            const pathsToDelete =
+              isSelected && selectedFiles.size > 1
+                ? Array.from(selectedFiles)
+                : [entry.path];
+            onDelete(pathsToDelete);
+          }}
+          className="text-destructive focus:text-destructive"
+        >
           <Trash2 className="mr-2 h-4 w-4" />
           Delete
           <ContextMenuShortcut>Del</ContextMenuShortcut>

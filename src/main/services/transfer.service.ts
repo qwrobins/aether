@@ -1,7 +1,7 @@
 import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { stat, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -31,17 +31,22 @@ export class TransferService {
     return Array.from(this.transfers.values());
   }
 
+  getTransfer(id: string): TransferItem | undefined {
+    return this.transfers.get(id);
+  }
+
   async enqueue(
     request: TransferRequest,
     s3Client?: S3Client,
     sftpClient?: any,
+    size?: number,
   ): Promise<string> {
     const id = crypto.randomUUID();
     const item: TransferItem = {
       id,
       fileName: path.basename(request.sourcePath),
       ...request,
-      size: 0,
+      size: size ?? 0,
       bytesTransferred: 0,
       status: 'queued',
       speed: 0,
@@ -152,6 +157,11 @@ export class TransferService {
 
       await upload.done();
     } else {
+      const destDir = path.dirname(item.destinationPath);
+      if (destDir && destDir !== '.' && destDir !== '/') {
+        await mkdir(destDir, { recursive: true });
+      }
+
       const response = await client.send(
         new GetObjectCommand({
           Bucket: item.bucket!,
@@ -193,6 +203,16 @@ export class TransferService {
       const fileStat = await stat(item.sourcePath);
       item.size = fileStat.size;
 
+      // Ensure parent directory exists for nested paths
+      const destDir = path.dirname(item.destinationPath);
+      if (destDir && destDir !== '.' && destDir !== '/') {
+        try {
+          await client.mkdir(destDir, true);
+        } catch {
+          // Ignore - dir may already exist
+        }
+      }
+
       await client.fastPut(item.sourcePath, item.destinationPath, {
         step: (totalTransferred: number, _chunk: number, total: number) => {
           if (signal?.aborted) return;
@@ -204,6 +224,11 @@ export class TransferService {
         },
       });
     } else {
+      const destDir = path.dirname(item.destinationPath);
+      if (destDir && destDir !== '.' && destDir !== '/') {
+        await mkdir(destDir, { recursive: true });
+      }
+
       const remoteStat = await client.stat(item.sourcePath);
       item.size = remoteStat.size;
 
