@@ -1,4 +1,5 @@
 import { Gem } from 'lucide-react';
+import { IpcChannels } from '@shared/constants/channels';
 
 export function TitleBar() {
   return (
@@ -20,18 +21,21 @@ export function TitleBar() {
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-white/[0.06] hover:text-foreground"
           aria-label="Minimize"
+          onClick={() => window.api?.invoke(IpcChannels.WINDOW_MINIMIZE)}
         >
           &#8722;
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-white/[0.06] hover:text-foreground"
           aria-label="Maximize"
+          onClick={() => window.api?.invoke(IpcChannels.WINDOW_MAXIMIZE)}
         >
           &#9633;
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-red-500/80 hover:text-white"
           aria-label="Close"
+          onClick={() => window.api?.invoke(IpcChannels.WINDOW_CLOSE)}
         >
           &#10005;
         </button>

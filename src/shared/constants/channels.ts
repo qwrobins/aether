@@ -39,6 +39,11 @@ export const IpcChannels = {
   TRANSFER_PROGRESS: 'transfer:progress',
   TRANSFER_COMPLETE: 'transfer:complete',
   TRANSFER_ERROR: 'transfer:error',
+
+  // Window controls
+  WINDOW_CLOSE: 'window:close',
+  WINDOW_MINIMIZE: 'window:minimize',
+  WINDOW_MAXIMIZE: 'window:maximize',
 } as const;
 
 export type IpcChannel = typeof IpcChannels[keyof typeof IpcChannels];

@@ -51,34 +51,43 @@ export function TransferItem({ transfer: t }: Props) {
         </span>
       </div>
 
-      {/* Progress bar */}
+      {/* Progress bar — visible in all states */}
       <div className="w-24 shrink-0">
-        {t.status === 'active' || t.status === 'queued' ? (
-          <div className="h-[3px] overflow-hidden rounded-full bg-muted-foreground/10">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-300',
-                isUpload
-                  ? 'bg-primary'
-                  : 'bg-accent',
-                t.status === 'active' &&
-                  'animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-gradient-to-r',
-                t.status === 'active' && isUpload &&
-                  'from-primary via-primary/60 to-primary',
-                t.status === 'active' && !isUpload &&
-                  'from-accent via-accent/60 to-accent'
-              )}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-        ) : t.status === 'failed' ? (
-          <div className="h-[3px] overflow-hidden rounded-full bg-destructive/30">
-            <div
-              className="h-full rounded-full bg-destructive"
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-        ) : null}
+        <div
+          className={cn(
+            'h-[3px] overflow-hidden rounded-full',
+            t.status === 'failed' ? 'bg-destructive/20' : 'bg-muted-foreground/10'
+          )}
+        >
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-300',
+              t.status === 'failed'
+                ? 'bg-destructive'
+                : t.status === 'completed'
+                  ? 'bg-success'
+                  : isUpload
+                    ? 'bg-primary'
+                    : 'bg-accent',
+              t.status === 'queued' &&
+                'animate-[indeterminate_1.5s_ease-in-out_infinite]',
+              t.status === 'active' &&
+                'animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-gradient-to-r',
+              t.status === 'active' && isUpload &&
+                'from-primary via-primary/60 to-primary',
+              t.status === 'active' && !isUpload &&
+                'from-accent via-accent/60 to-accent'
+            )}
+            style={{
+              width:
+                t.status === 'queued'
+                  ? '40%'
+                  : t.status === 'completed'
+                    ? '100%'
+                    : `${percentage}%`,
+            }}
+          />
+        </div>
       </div>
 
       {/* Stats */}
@@ -87,14 +96,18 @@ export function TransferItem({ transfer: t }: Props) {
           ? '\u2713'
           : t.status === 'failed'
             ? '\u2717'
-            : `${percentage}%`}
+            : t.status === 'queued'
+              ? '\u2022\u2022\u2022'
+              : `${percentage}%`}
       </span>
       <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
         {t.status === 'active'
           ? formatSpeed(t.speed)
           : t.status === 'queued'
             ? 'waiting'
-            : ''}
+            : t.status === 'completed'
+              ? 'done'
+              : ''}
       </span>
 
       {/* Cancel/Retry button */}

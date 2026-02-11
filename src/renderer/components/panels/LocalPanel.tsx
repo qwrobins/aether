@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useTransferStore } from '@/stores/transferStore';
@@ -62,6 +63,7 @@ export function LocalPanel() {
           useRemotePanelStore.getState();
         if (!activeConnectionId || !activeProfile) return;
 
+        const addTransfer = useTransferStore.getState().addTransfer;
         for (const entry of payload.entries) {
           const request: TransferRequest = {
             sourcePath: entry.path,
@@ -72,25 +74,31 @@ export function LocalPanel() {
             bucket: currentBucket || undefined,
           };
 
-          const transferId = await window.api.invoke('transfer:start', request);
-          useTransferStore.getState().addTransfer({
-            id: transferId,
-            fileName: entry.name,
-            sourcePath: request.sourcePath,
-            destinationPath: request.destinationPath,
-            direction: 'download',
-            connectionId: activeConnectionId,
-            connectionType: activeProfile.type,
-            bucket: request.bucket,
-            size: entry.size || 0,
-            bytesTransferred: 0,
-            status: 'queued',
-            speed: 0,
-            retryCount: 0,
-          });
+          const result = await window.api.invoke('transfer:start', request);
+          if (Array.isArray(result)) {
+            for (const item of result) {
+              addTransfer(item);
+            }
+          } else {
+            addTransfer({
+              id: result,
+              fileName: entry.name,
+              sourcePath: request.sourcePath,
+              destinationPath: request.destinationPath,
+              direction: 'download',
+              connectionId: activeConnectionId,
+              connectionType: activeProfile.type,
+              bucket: request.bucket,
+              size: entry.size || 0,
+              bytesTransferred: 0,
+              status: 'queued',
+              speed: 0,
+              retryCount: 0,
+            });
+          }
         }
-      } catch {
-        // Invalid transfer data
+      } catch (err) {
+        console.error('[Aether] Download drop handler error:', err);
       }
     },
     [currentPath]
@@ -99,7 +107,10 @@ export function LocalPanel() {
   const handleDelete = useCallback(
     (paths: string[]) => {
       if (confirm(`Delete ${paths.length} item(s)?`)) {
-        window.api.invoke('fs:delete', paths).then(() => refresh());
+        window.api.invoke('fs:delete', paths).then(() => refresh()).catch((err) => {
+          console.error('[Aether] Delete failed:', err);
+          toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
       }
     },
     [refresh]
@@ -141,28 +152,36 @@ export function LocalPanel() {
         bucket: currentBucket || undefined,
       };
 
-      const transferId = await window.api.invoke('transfer:start', request);
-      useTransferStore.getState().addTransfer({
-        id: transferId,
-        fileName: entry.name,
-        sourcePath: request.sourcePath,
-        destinationPath: request.destinationPath,
-        direction: 'upload',
-        connectionId: activeConnectionId,
-        connectionType: activeProfile.type,
-        bucket: request.bucket,
-        size: entry.size || 0,
-        bytesTransferred: 0,
-        status: 'queued',
-        speed: 0,
-        retryCount: 0,
-      });
+      const result = await window.api.invoke('transfer:start', request);
+      const addTransfer = useTransferStore.getState().addTransfer;
+      if (Array.isArray(result)) {
+        for (const item of result) {
+          addTransfer(item);
+        }
+      } else {
+        addTransfer({
+          id: result,
+          fileName: entry.name,
+          sourcePath: request.sourcePath,
+          destinationPath: request.destinationPath,
+          direction: 'upload',
+          connectionId: activeConnectionId,
+          connectionType: activeProfile.type,
+          bucket: request.bucket,
+          size: entry.size || 0,
+          bytesTransferred: 0,
+          status: 'queued',
+          speed: 0,
+          retryCount: 0,
+        });
+      }
     },
     []
   );
 
   return (
     <div
+      data-panel="local"
       className="relative flex min-h-0 h-full flex-col overflow-hidden"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

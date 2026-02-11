@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/types/filesystem';
-import type { ConnectionProfile, ConnectionStatus, SftpConnectionProfile } from '@shared/types/connection';
+import type { ConnectionProfile, ConnectionStatus, S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
 
 interface RemotePanelState {
   // Connection state
@@ -17,6 +17,7 @@ interface RemotePanelState {
   currentPath: string;
   entries: FileEntry[];
   selectedFiles: Set<string>;
+  selectionAnchor: string | null;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -35,7 +36,7 @@ interface RemotePanelState {
   navigateTo: (path: string) => Promise<void>;
   navigateUp: () => Promise<void>;
   refresh: () => Promise<void>;
-  selectFile: (path: string, multi?: boolean) => void;
+  selectFile: (path: string, multi?: boolean, shift?: boolean) => void;
   selectAll: () => void;
   clearSelection: () => void;
   setViewMode: (mode: ViewMode) => void;
@@ -91,6 +92,7 @@ const initialState = {
   currentPath: '',
   entries: [] as FileEntry[],
   selectedFiles: new Set<string>(),
+  selectionAnchor: null as string | null,
   viewMode: 'list' as ViewMode,
   sortField: 'name' as SortField,
   sortDirection: 'asc' as SortDirection,
@@ -115,6 +117,13 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       });
       if (profile.type === 's3') {
         await get().loadBuckets();
+        const s3Profile = profile as S3ConnectionProfile;
+        if (s3Profile.defaultBucket) {
+          const { buckets } = get();
+          if (buckets.includes(s3Profile.defaultBucket)) {
+            await get().selectBucket(s3Profile.defaultBucket);
+          }
+        }
       } else if (profile.type === 'sftp') {
         const defaultPath = (profile as SftpConnectionProfile).defaultPath || '/';
         await get().navigateTo(defaultPath);
@@ -156,7 +165,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   selectBucket: async (bucket: string) => {
-    set({ currentBucket: bucket, currentPath: '', entries: [], selectedFiles: new Set() });
+    set({ currentBucket: bucket, currentPath: '', entries: [], selectedFiles: new Set(), selectionAnchor: null });
     await get().navigateTo('');
   },
 
@@ -167,7 +176,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
     // S3 requires a bucket to be selected before navigating
     if (activeProfile.type === 's3' && !currentBucket) return;
 
-    set({ isLoading: true, error: null, selectedFiles: new Set() });
+    set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
       const listing = activeProfile.type === 'sftp'
         ? await window.api.invoke('sftp:list', activeConnectionId, path)
@@ -211,13 +220,27 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
     }
   },
 
-  selectFile: (path: string, multi = false) => {
+  selectFile: (path: string, multi = false, shift = false) => {
     set((state) => {
-      const next = new Set(multi ? state.selectedFiles : []);
-      if (next.has(path)) {
-        next.delete(path);
+      const { entries } = state;
+      const pathIndex = entries.findIndex((e) => e.path === path);
+      if (pathIndex < 0) return state;
+
+      let next: Set<string>;
+      if (shift) {
+        const anchor = state.selectionAnchor ?? Array.from(state.selectedFiles)[0];
+        const anchorIndex = anchor !== undefined ? entries.findIndex((e) => e.path === anchor) : -1;
+        const from = anchorIndex >= 0 ? Math.min(anchorIndex, pathIndex) : pathIndex;
+        const to = anchorIndex >= 0 ? Math.max(anchorIndex, pathIndex) : pathIndex;
+        next = new Set(entries.slice(from, to + 1).map((e) => e.path));
+      } else if (multi) {
+        next = new Set(state.selectedFiles);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return { selectedFiles: next, selectionAnchor: path };
       } else {
-        next.add(path);
+        next = new Set([path]);
+        return { selectedFiles: next, selectionAnchor: path };
       }
       return { selectedFiles: next };
     });
@@ -230,7 +253,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   clearSelection: () => {
-    set({ selectedFiles: new Set() });
+    set({ selectedFiles: new Set(), selectionAnchor: null });
   },
 
   setViewMode: (mode: ViewMode) => {

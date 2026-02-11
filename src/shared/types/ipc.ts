@@ -34,7 +34,7 @@ export interface IpcInvokeMap {
   'conn:disconnect': { args: [id: string]; return: void };
 
   // Transfers
-  'transfer:start': { args: [request: TransferRequest]; return: string };
+  'transfer:start': { args: [request: TransferRequest]; return: string | TransferItem[] };
   'transfer:cancel': { args: [transferId: string]; return: void };
   'transfer:clear': { args: []; return: void };
   'transfer:list': { args: []; return: TransferItem[] };

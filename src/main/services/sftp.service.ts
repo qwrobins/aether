@@ -68,6 +68,32 @@ export class SftpService {
     return { path: remotePath, entries, parentPath };
   }
 
+  /** Recursively list all files (not directories) under a path */
+  async listFilesRecursive(
+    connectionId: string,
+    dirPath: string,
+  ): Promise<Array<{ path: string; relativePath: string; size: number }>> {
+    const client = this.getClient(connectionId);
+    const results: Array<{ path: string; relativePath: string; size: number }> = [];
+
+    const walk = async (currentDir: string, relativePrefix: string) => {
+      const items = await client.list(currentDir);
+      for (const item of items) {
+        if (item.name === '.' || item.name === '..') continue;
+        const fullPath = currentDir === '/' ? `/${item.name}` : `${currentDir}/${item.name}`;
+        const relativePath = relativePrefix ? `${relativePrefix}/${item.name}` : item.name;
+        if (item.type === 'd') {
+          await walk(fullPath, relativePath);
+        } else {
+          results.push({ path: fullPath, relativePath, size: item.size || 0 });
+        }
+      }
+    };
+
+    await walk(dirPath, '');
+    return results;
+  }
+
   async mkdir(connectionId: string, remotePath: string): Promise<void> {
     const client = this.getClient(connectionId);
     await client.mkdir(remotePath, true);

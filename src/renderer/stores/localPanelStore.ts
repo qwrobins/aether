@@ -5,6 +5,7 @@ interface LocalPanelState {
   currentPath: string;
   entries: FileEntry[];
   selectedFiles: Set<string>;
+  selectionAnchor: string | null;
   viewMode: ViewMode;
   sortField: SortField;
   sortDirection: SortDirection;
@@ -14,7 +15,7 @@ interface LocalPanelState {
   navigateTo: (path: string) => Promise<void>;
   navigateUp: () => Promise<void>;
   refresh: () => Promise<void>;
-  selectFile: (path: string, multi?: boolean) => void;
+  selectFile: (path: string, multi?: boolean, shift?: boolean) => void;
   selectAll: () => void;
   clearSelection: () => void;
   setViewMode: (mode: ViewMode) => void;
@@ -58,6 +59,7 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
   currentPath: '',
   entries: [],
   selectedFiles: new Set(),
+  selectionAnchor: null as string | null,
   viewMode: 'list',
   sortField: 'name',
   sortDirection: 'asc',
@@ -65,7 +67,7 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
   error: null,
 
   navigateTo: async (path: string) => {
-    set({ isLoading: true, error: null, selectedFiles: new Set() });
+    set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
       const listing = await window.api.invoke('fs:read-dir', path);
       const { sortField, sortDirection } = get();
@@ -97,13 +99,27 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
     }
   },
 
-  selectFile: (path: string, multi = false) => {
+  selectFile: (path: string, multi = false, shift = false) => {
     set((state) => {
-      const next = new Set(multi ? state.selectedFiles : []);
-      if (next.has(path)) {
-        next.delete(path);
+      const { entries } = state;
+      const pathIndex = entries.findIndex((e) => e.path === path);
+      if (pathIndex < 0) return state;
+
+      let next: Set<string>;
+      if (shift) {
+        const anchor = state.selectionAnchor ?? Array.from(state.selectedFiles)[0];
+        const anchorIndex = anchor !== undefined ? entries.findIndex((e) => e.path === anchor) : -1;
+        const from = anchorIndex >= 0 ? Math.min(anchorIndex, pathIndex) : pathIndex;
+        const to = anchorIndex >= 0 ? Math.max(anchorIndex, pathIndex) : pathIndex;
+        next = new Set(entries.slice(from, to + 1).map((e) => e.path));
+      } else if (multi) {
+        next = new Set(state.selectedFiles);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return { selectedFiles: next, selectionAnchor: path };
       } else {
-        next.add(path);
+        next = new Set([path]);
+        return { selectedFiles: next, selectionAnchor: path };
       }
       return { selectedFiles: next };
     });
@@ -116,7 +132,7 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
   },
 
   clearSelection: () => {
-    set({ selectedFiles: new Set() });
+    set({ selectedFiles: new Set(), selectionAnchor: null });
   },
 
   setViewMode: (mode: ViewMode) => {

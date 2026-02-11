@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { toast } from 'sonner';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 
@@ -15,12 +16,16 @@ export function useKeyboardShortcuts() {
         const localStore = useLocalPanelStore.getState();
         const remoteStore = useRemotePanelStore.getState();
 
-        if (localStore.selectedFiles.size > 0) {
-          const paths = Array.from(localStore.selectedFiles);
-          if (confirm(`Delete ${paths.length} item(s)?`)) {
-            window.api.invoke('fs:delete', paths).then(() => localStore.refresh());
-          }
-        } else if (remoteStore.selectedFiles.size > 0) {
+        const focusedPanel = document.activeElement?.closest('[data-panel]')?.getAttribute('data-panel');
+        const remoteCount = remoteStore.selectedFiles.size;
+        const localCount = localStore.selectedFiles.size;
+
+        // Use the focused panel's selection; when focus is elsewhere, use the panel with more selections
+        const useRemote =
+          (focusedPanel === 'remote' && remoteCount > 0) ||
+          (focusedPanel !== 'local' && remoteCount > 0 && remoteCount >= localCount);
+
+        if (useRemote && remoteCount > 0) {
           const paths = Array.from(remoteStore.selectedFiles);
           if (confirm(`Delete ${paths.length} remote item(s)?`)) {
             if (remoteStore.activeProfile?.type === 's3') {
@@ -28,12 +33,32 @@ export function useKeyboardShortcuts() {
                 paths.map((p) =>
                   window.api.invoke('s3:delete-object', remoteStore.activeConnectionId!, remoteStore.currentBucket!, p)
                 )
-              ).then(() => remoteStore.refresh());
+              )
+                .then(() => remoteStore.refresh())
+                .catch((err) => {
+                  console.error('[Aether] S3 delete failed:', err);
+                  toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+                });
             } else if (remoteStore.activeProfile?.type === 'sftp') {
               window.api
                 .invoke('sftp:delete', remoteStore.activeConnectionId!, paths)
-                .then(() => remoteStore.refresh());
+                .then(() => remoteStore.refresh())
+                .catch((err) => {
+                  console.error('[Aether] SFTP delete failed:', err);
+                  toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+                });
             }
+          }
+        } else if (localCount > 0) {
+          const paths = Array.from(localStore.selectedFiles);
+          if (confirm(`Delete ${paths.length} item(s)?`)) {
+            window.api
+              .invoke('fs:delete', paths)
+              .then(() => localStore.refresh())
+              .catch((err) => {
+                console.error('[Aether] Delete failed:', err);
+                toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+              });
           }
         }
       }

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTransferStore } from '@/stores/transferStore';
@@ -45,7 +46,7 @@ function BucketList() {
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="p-2">
         {buckets.map((bucket) => (
           <button
@@ -131,25 +132,33 @@ export function RemotePanel() {
               bucket: currentBucket || undefined,
             };
 
-            const transferId = await window.api.invoke('transfer:start', request);
-            useTransferStore.getState().addTransfer({
-              id: transferId,
-              fileName: entry.name,
-              sourcePath: request.sourcePath,
-              destinationPath: request.destinationPath,
-              direction: 'upload',
-              connectionId: activeConnectionId,
-              connectionType: activeProfile.type,
-              bucket: request.bucket,
-              size: entry.size || 0,
-              bytesTransferred: 0,
-              status: 'queued',
-              speed: 0,
-              retryCount: 0,
-            });
+            const result = await window.api.invoke('transfer:start', request);
+            const addTransfer = useTransferStore.getState().addTransfer;
+            if (Array.isArray(result)) {
+              for (const item of result) {
+                addTransfer(item);
+              }
+            } else {
+              addTransfer({
+                id: result,
+                fileName: entry.name,
+                sourcePath: request.sourcePath,
+                destinationPath: request.destinationPath,
+                direction: 'upload',
+                connectionId: activeConnectionId,
+                connectionType: activeProfile.type,
+                bucket: request.bucket,
+                size: entry.size || 0,
+                bytesTransferred: 0,
+                status: 'queued',
+                speed: 0,
+                retryCount: 0,
+              });
+            }
           }
-        } catch {
-          // Invalid transfer data
+        } catch (err) {
+          console.error('[Aether] Upload drop handler error:', err);
+          toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
         }
         return;
       }
@@ -173,22 +182,29 @@ export function RemotePanel() {
             bucket: currentBucket || undefined,
           };
 
-          const transferId = await window.api.invoke('transfer:start', request);
-          useTransferStore.getState().addTransfer({
-            id: transferId,
-            fileName: file.name,
-            sourcePath: filePath,
-            destinationPath: destPath,
-            direction: 'upload',
-            connectionId: activeConnectionId,
-            connectionType: activeProfile.type,
-            bucket: request.bucket,
-            size: file.size,
-            bytesTransferred: 0,
-            status: 'queued',
-            speed: 0,
-            retryCount: 0,
-          });
+          const result = await window.api.invoke('transfer:start', request);
+          const addTransfer = useTransferStore.getState().addTransfer;
+          if (Array.isArray(result)) {
+            for (const item of result) {
+              addTransfer(item);
+            }
+          } else {
+            addTransfer({
+              id: result,
+              fileName: file.name,
+              sourcePath: filePath,
+              destinationPath: destPath,
+              direction: 'upload',
+              connectionId: activeConnectionId,
+              connectionType: activeProfile.type,
+              bucket: request.bucket,
+              size: file.size,
+              bytesTransferred: 0,
+              status: 'queued',
+              speed: 0,
+              retryCount: 0,
+            });
+          }
         }
       }
     },
@@ -205,11 +221,20 @@ export function RemotePanel() {
           paths.map((p) =>
             window.api.invoke('s3:delete-object', activeConnectionId, currentBucket!, p)
           )
-        ).then(() => refresh());
+        )
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] S3 delete failed:', err);
+            toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       } else if (activeProfile.type === 'sftp') {
         window.api
           .invoke('sftp:delete', activeConnectionId, paths)
-          .then(() => refresh());
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] SFTP delete failed:', err);
+            toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       }
     },
     [activeConnectionId, activeProfile, currentBucket, refresh]
@@ -262,22 +287,29 @@ export function RemotePanel() {
         bucket: currentBucket || undefined,
       };
 
-      const transferId = await window.api.invoke('transfer:start', request);
-      useTransferStore.getState().addTransfer({
-        id: transferId,
-        fileName: entry.name,
-        sourcePath: request.sourcePath,
-        destinationPath: request.destinationPath,
-        direction: 'download',
-        connectionId: activeConnectionId,
-        connectionType: activeProfile.type,
-        bucket: request.bucket,
-        size: entry.size || 0,
-        bytesTransferred: 0,
-        status: 'queued',
-        speed: 0,
-        retryCount: 0,
-      });
+      const result = await window.api.invoke('transfer:start', request);
+      const addTransfer = useTransferStore.getState().addTransfer;
+      if (Array.isArray(result)) {
+        for (const item of result) {
+          addTransfer(item);
+        }
+      } else {
+        addTransfer({
+          id: result,
+          fileName: entry.name,
+          sourcePath: request.sourcePath,
+          destinationPath: request.destinationPath,
+          direction: 'download',
+          connectionId: activeConnectionId,
+          connectionType: activeProfile.type,
+          bucket: request.bucket,
+          size: entry.size || 0,
+          bytesTransferred: 0,
+          status: 'queued',
+          speed: 0,
+          retryCount: 0,
+        });
+      }
     },
     [activeConnectionId, activeProfile, currentBucket]
   );
@@ -291,7 +323,7 @@ export function RemotePanel() {
   // State 1: No connection
   if (!activeConnectionId) {
     return (
-      <div className="flex min-h-0 h-full flex-col overflow-hidden">
+      <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
         <PanelHeader label="Remote" path="" isActive={false} onNavigate={() => {}} onRefresh={() => {}} />
         {connectionStatus === 'connecting' ? (
           <div className="flex flex-1 items-center justify-center">
@@ -317,6 +349,7 @@ export function RemotePanel() {
   if (activeProfile?.type === 'sftp') {
     return (
       <div
+        data-panel="remote"
         className="relative flex min-h-0 h-full flex-col overflow-hidden"
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -361,7 +394,7 @@ export function RemotePanel() {
   // State 3: S3 connected, selecting bucket
   if (activeProfile?.type === 's3' && !currentBucket) {
     return (
-      <div className="flex min-h-0 h-full flex-col overflow-hidden">
+      <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
         <PanelHeader
           label={`S3: ${activeProfile.name}`}
           path=""
@@ -377,6 +410,7 @@ export function RemotePanel() {
   // State 4: S3 browsing objects in a bucket
   return (
     <div
+      data-panel="remote"
       className="relative flex min-h-0 h-full flex-col overflow-hidden"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

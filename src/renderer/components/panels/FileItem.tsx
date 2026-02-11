@@ -11,8 +11,10 @@ interface FileItemProps {
   entry: FileEntry;
   index: number;
   isSelected: boolean;
+  allEntries: FileEntry[];
+  selectedFiles: Set<string>;
   panelType: PanelType;
-  onSelect: (path: string, multi: boolean) => void;
+  onSelect: (path: string, multi: boolean, shift?: boolean) => void;
   onNavigate: (path: string) => void;
   onDelete: (paths: string[]) => void;
   onRename: (oldPath: string, newName: string) => void;
@@ -41,6 +43,8 @@ export function FileItem({
   entry,
   index,
   isSelected,
+  allEntries,
+  selectedFiles,
   panelType,
   onSelect,
   onNavigate,
@@ -50,16 +54,20 @@ export function FileItem({
   onTransfer,
 }: FileItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
+    // If dragging a selected item, include ALL selected items in the payload.
+    // If dragging an unselected item, include only that item (standard file manager UX).
+    const draggedEntries = isSelected
+      ? allEntries.filter((f) => selectedFiles.has(f.path))
+      : [entry];
+
     const payload = {
       panelType,
-      entries: [
-        {
-          name: entry.name,
-          path: entry.path,
-          size: entry.size,
-          isDirectory: entry.isDirectory,
-        },
-      ],
+      entries: draggedEntries.map((f) => ({
+        name: f.name,
+        path: f.path,
+        size: f.size,
+        isDirectory: f.isDirectory,
+      })),
     };
     e.dataTransfer.setData('application/aether-transfer', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'copy';
@@ -68,6 +76,8 @@ export function FileItem({
   return (
     <FileContextMenu
       entry={entry}
+      isSelected={isSelected}
+      selectedFiles={selectedFiles}
       panelType={panelType}
       onNavigate={onNavigate}
       onDelete={onDelete}
@@ -87,7 +97,7 @@ export function FileItem({
         data-state={isSelected ? 'selected' : undefined}
         draggable
         onDragStart={handleDragStart}
-        onClick={(e) => onSelect(entry.path, e.ctrlKey || e.metaKey)}
+        onClick={(e) => onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey)}
         onDoubleClick={() => {
           if (entry.isDirectory) onNavigate(entry.path);
         }}

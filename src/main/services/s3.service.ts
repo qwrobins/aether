@@ -1,9 +1,9 @@
 import {
   S3Client,
   ListBucketsCommand,
-  GetBucketLocationCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
 import { IAMClient, ListRolesCommand } from '@aws-sdk/client-iam';
@@ -143,26 +143,13 @@ export class S3Service {
 
   async listBuckets(connectionId: string): Promise<string[]> {
     const client = this.getClient(connectionId);
-    const configuredRegion = this.regions.get(connectionId) || 'us-east-1';
     const result = await client.send(new ListBucketsCommand({}));
-    const allBuckets = (result.Buckets || []).map((b) => b.Name!).filter(Boolean);
-
-    // Filter to only buckets in the configured region
-    const filtered: string[] = [];
-    for (const bucket of allBuckets) {
-      try {
-        const loc = await client.send(new GetBucketLocationCommand({ Bucket: bucket }));
-        // AWS returns null/empty for us-east-1
-        const bucketRegion = loc.LocationConstraint || 'us-east-1';
-        if (bucketRegion === configuredRegion) {
-          filtered.push(bucket);
-        }
-      } catch {
-        // Can't determine region — skip bucket
-      }
-    }
-
-    return filtered;
+    // Return all buckets sorted alphabetically — cross-region access is
+    // handled transparently by followRegionRedirects on the S3 client
+    return (result.Buckets || [])
+      .map((b) => b.Name!)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
   }
 
   async listObjects(
@@ -218,9 +205,110 @@ export class S3Service {
     return { path: prefix, entries, parentPath };
   }
 
+  /** List all object keys under a prefix (recursive, no delimiter) */
+  async listObjectKeysRecursive(
+    connectionId: string,
+    bucket: string,
+    prefix: string,
+  ): Promise<Array<{ key: string; size: number }>> {
+    const client = this.getClient(connectionId);
+    const results: Array<{ key: string; size: number }> = [];
+    const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/';
+    let continuationToken: string | undefined;
+
+    do {
+      const result = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: normPrefix,
+          MaxKeys: 1000,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      for (const obj of result.Contents || []) {
+        if (obj.Key && !obj.Key.endsWith('/')) {
+          results.push({ key: obj.Key, size: obj.Size || 0 });
+        }
+      }
+      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    return results;
+  }
+
   async deleteObject(connectionId: string, bucket: string, key: string): Promise<void> {
     const client = this.getClient(connectionId);
-    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    if (key.endsWith('/')) {
+      await this.deletePrefixRecursive(client, bucket, key);
+    } else {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+    }
+  }
+
+  /** Delete all objects under a prefix (for S3 "folder" deletion). */
+  private async deletePrefixRecursive(
+    client: S3Client,
+    bucket: string,
+    prefix: string,
+  ): Promise<void> {
+    const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/';
+    const keysToDelete: string[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const result = await client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: normPrefix,
+          MaxKeys: 1000,
+          ContinuationToken: continuationToken,
+        }),
+      );
+      for (const obj of result.Contents || []) {
+        if (obj.Key) keysToDelete.push(obj.Key);
+      }
+      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    for (let i = 0; i < keysToDelete.length; i += 1000) {
+      let batch = keysToDelete.slice(i, i + 1000);
+      const maxRetries = 3;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: batch.map((Key) => ({ Key })) },
+          }),
+        );
+
+        if (response.Errors && response.Errors.length > 0) {
+          const failedKeys = response.Errors
+            .filter((e) => e.Key)
+            .map((e) => e.Key!);
+          const errorDetails = response.Errors
+            .map((e) => `${e.Key}: ${e.Code} - ${e.Message}`)
+            .join('; ');
+
+          if (attempt < maxRetries && failedKeys.length > 0) {
+            console.warn(
+              `[Aether] S3 partial delete failure (attempt ${attempt + 1}/${maxRetries}), ` +
+              `retrying ${failedKeys.length} key(s): ${errorDetails}`,
+            );
+            const delay = Math.pow(2, attempt) * 500;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            batch = failedKeys;
+          } else {
+            throw new Error(
+              `S3 delete failed for ${failedKeys.length} object(s) after ${attempt + 1} attempt(s): ${errorDetails}`,
+            );
+          }
+        } else {
+          break;
+        }
+      }
+    }
   }
 
   async createFolder(connectionId: string, bucket: string, key: string): Promise<void> {
