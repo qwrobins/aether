@@ -10,6 +10,7 @@ export interface IpcInvokeMap {
   'fs:rename': { args: [oldPath: string, newPath: string]; return: void };
   'fs:get-home': { args: []; return: string };
   'fs:list-drives': { args: []; return: DriveInfo[] };
+  'fs:mount-drive': { args: [devicePath: string]; return: string };
   'fs:open-in-explorer': { args: [path: string]; return: void };
 
   // S3
