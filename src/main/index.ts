@@ -1,7 +1,17 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerAllIpcHandlers } from './ipc';
+
+/** Resolve the app icon path for both dev and packaged builds. */
+function getIconPath(): string {
+  if (app.isPackaged) {
+    // In packaged build, icon.png is copied to the asar root by afterCopy hook
+    return path.join(__dirname, '../../icon.png');
+  }
+  // In dev, relative to project root
+  return path.resolve(__dirname, '../../assets/icon.png');
+}
 
 if (started) {
   app.quit();
@@ -20,6 +30,7 @@ const createWindow = () => {
     frame: false,
     backgroundColor: '#111118',
     show: false,
+    icon: nativeImage.createFromPath(getIconPath()),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
