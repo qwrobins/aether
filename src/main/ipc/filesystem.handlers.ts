@@ -32,6 +32,10 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
     return fs.getHome();
   });
 
+  ipcMain.handle(IpcChannels.FS_LIST_DRIVES, async () => {
+    return fs.listDrives();
+  });
+
   ipcMain.handle(
     IpcChannels.FS_OPEN_IN_EXPLORER,
     async (_event, path: string) => {

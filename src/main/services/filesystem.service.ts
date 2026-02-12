@@ -1,14 +1,16 @@
 import {
   readdir,
+  readFile,
   stat as fsStat,
+  access,
   mkdir as fsMkdir,
   rm,
   rename as fsRename,
 } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { shell } from 'electron';
-import type { FileEntry, DirectoryListing } from '@shared/types/filesystem';
+import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/filesystem';
 
 export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
@@ -103,5 +105,87 @@ export class FilesystemService {
 
   openInExplorer(filePath: string): void {
     shell.openPath(filePath);
+  }
+
+  async listDrives(): Promise<DriveInfo[]> {
+    const os = platform();
+    const drives: DriveInfo[] = [];
+
+    // Always include root
+    if (os !== 'win32') {
+      drives.push({ name: 'Root', path: '/', isRemovable: false });
+    }
+
+    if (os === 'linux') {
+      // Parse /proc/mounts for user-accessible mount points
+      try {
+        const mounts = await readFile('/proc/mounts', 'utf-8');
+        const removablePrefixes = ['/media/', '/mnt/', '/run/media/'];
+        const seen = new Set<string>();
+
+        for (const line of mounts.split('\n')) {
+          const parts = line.split(' ');
+          if (parts.length < 2) continue;
+          const mountPoint = parts[1];
+
+          if (!removablePrefixes.some((p) => mountPoint.startsWith(p))) continue;
+          if (seen.has(mountPoint)) continue;
+          seen.add(mountPoint);
+
+          // Verify we can actually access it
+          try {
+            await access(mountPoint);
+            drives.push({
+              name: basename(mountPoint),
+              path: mountPoint,
+              isRemovable: true,
+            });
+          } catch {
+            // No permission — skip
+          }
+        }
+      } catch {
+        // /proc/mounts not available
+      }
+    } else if (os === 'darwin') {
+      // macOS: list /Volumes
+      try {
+        const volumes = await readdir('/Volumes');
+        for (const vol of volumes) {
+          const volPath = `/Volumes/${vol}`;
+          try {
+            await access(volPath);
+            // The boot volume is typically the first one or "Macintosh HD"
+            drives.push({
+              name: vol,
+              path: volPath,
+              isRemovable: vol !== 'Macintosh HD',
+            });
+          } catch {
+            // No access
+          }
+        }
+      } catch {
+        // /Volumes not readable
+      }
+    } else if (os === 'win32') {
+      // Windows: check drive letters A-Z
+      for (let code = 65; code <= 90; code++) {
+        const letter = String.fromCharCode(code);
+        const drivePath = `${letter}:\\`;
+        try {
+          await access(drivePath);
+          drives.push({
+            name: `${letter}:`,
+            path: drivePath,
+            isRemovable: !['C'].includes(letter),
+          });
+        } catch {
+          // Drive doesn't exist or inaccessible
+        }
+      }
+    }
+
+    return drives;
   }
 }
