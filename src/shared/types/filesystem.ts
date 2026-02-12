@@ -14,6 +14,12 @@ export interface DirectoryListing {
   parentPath: string | null;
 }
 
+export interface DriveInfo {
+  name: string;
+  path: string;
+  isRemovable: boolean;
+}
+
 export type SortField = 'name' | 'size' | 'modifiedAt';
 export type SortDirection = 'asc' | 'desc';
 export type ViewMode = 'list' | 'grid';

@@ -1,4 +1,4 @@
-import type { FileEntry, DirectoryListing } from './filesystem';
+import type { FileEntry, DirectoryListing, DriveInfo } from './filesystem';
 import type { ConnectionProfile } from './connection';
 import type { TransferRequest, TransferItem, TransferProgress, TransferResult } from './transfer';
 
@@ -9,6 +9,7 @@ export interface IpcInvokeMap {
   'fs:delete': { args: [paths: string[]]; return: void };
   'fs:rename': { args: [oldPath: string, newPath: string]; return: void };
   'fs:get-home': { args: []; return: string };
+  'fs:list-drives': { args: []; return: DriveInfo[] };
   'fs:open-in-explorer': { args: [path: string]; return: void };
 
   // S3

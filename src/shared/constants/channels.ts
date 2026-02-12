@@ -5,6 +5,7 @@ export const IpcChannels = {
   FS_DELETE: 'fs:delete',
   FS_RENAME: 'fs:rename',
   FS_GET_HOME: 'fs:get-home',
+  FS_LIST_DRIVES: 'fs:list-drives',
   FS_OPEN_IN_EXPLORER: 'fs:open-in-explorer',
 
   // S3

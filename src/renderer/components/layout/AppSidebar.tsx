@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { House, Monitor, Download, Cloud, Server, Settings, X } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sidebar,
@@ -70,15 +70,32 @@ function ConnectionStatusDot({ profileId }: { profileId: string }) {
   );
 }
 
+interface DriveInfo {
+  name: string;
+  path: string;
+  isRemovable: boolean;
+}
+
 export function AppSidebar() {
   const { navigateTo } = useLocalPanelStore();
   const { profiles, loadProfiles } = useConnectionStore();
   const { activeConnectionId, connect, disconnect } = useRemotePanelStore();
   const [connectionManagerOpen, setConnectionManagerOpen] = useState(false);
+  const [drives, setDrives] = useState<DriveInfo[]>([]);
+
+  const loadDrives = useCallback(async () => {
+    try {
+      const result = await window.api.invoke('fs:list-drives');
+      setDrives(result);
+    } catch {
+      // Drives unavailable
+    }
+  }, []);
 
   useEffect(() => {
     loadProfiles();
-  }, [loadProfiles]);
+    loadDrives();
+  }, [loadProfiles, loadDrives]);
 
   async function handleQuickAccess(pathKey: string) {
     const home = await window.api.invoke('fs:get-home');
@@ -130,6 +147,38 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {drives.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel className="text-[11px] font-medium uppercase tracking-[0.05em]">
+                Volumes
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {drives.map((drive) => (
+                    <SidebarMenuItem key={drive.path}>
+                      <SidebarMenuButton
+                        tooltip={`${drive.name} (${drive.path})`}
+                        onClick={() => navigateTo(drive.path)}
+                      >
+                        {drive.path === '/' ? (
+                          <Slash size={16} className="text-muted-foreground/70" />
+                        ) : drive.isRemovable ? (
+                          <Disc size={16} className="text-amber-400/70" />
+                        ) : (
+                          <HardDrive size={16} className="text-muted-foreground/70" />
+                        )}
+                        <span className="truncate">{drive.name}</span>
+                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/40 group-data-[collapsible=icon]:hidden">
+                          {drive.path}
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
 
           <SidebarGroup>
             <div className="flex items-center justify-between pr-2">
