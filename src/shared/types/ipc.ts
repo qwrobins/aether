@@ -25,6 +25,9 @@ export interface IpcInvokeMap {
   'sftp:delete': { args: [connectionId: string, paths: string[]]; return: void };
   'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
 
+  // Dialogs
+  'dialog:open-file': { args: [options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }]; return: string | null };
+
   // Connections
   'conn:save': { args: [profile: ConnectionProfile]; return: string };
   'conn:delete': { args: [id: string]; return: void };
