@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash } from 'lucide-react';
+import { toast } from 'sonner';
+import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sidebar,
@@ -73,7 +74,11 @@ function ConnectionStatusDot({ profileId }: { profileId: string }) {
 interface DriveInfo {
   name: string;
   path: string;
+  devicePath?: string;
   isRemovable: boolean;
+  isMounted: boolean;
+  size?: string;
+  fsType?: string;
 }
 
 export function AppSidebar() {
@@ -91,6 +96,26 @@ export function AppSidebar() {
       // Drives unavailable
     }
   }, []);
+
+  async function handleDriveClick(drive: DriveInfo) {
+    if (drive.isMounted && drive.path) {
+      navigateTo(drive.path);
+      return;
+    }
+
+    // Attempt to mount unmounted drive
+    if (drive.devicePath) {
+      try {
+        const mountPath = await window.api.invoke('fs:mount-drive', drive.devicePath);
+        toast.success(`Mounted ${drive.name} at ${mountPath}`);
+        navigateTo(mountPath);
+        // Refresh drive list to update mount status
+        loadDrives();
+      } catch (err) {
+        toast.error(`Failed to mount ${drive.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
 
   useEffect(() => {
     loadProfiles();
@@ -156,13 +181,20 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   {drives.map((drive) => (
-                    <SidebarMenuItem key={drive.path}>
+                    <SidebarMenuItem key={drive.devicePath || drive.path}>
                       <SidebarMenuButton
-                        tooltip={`${drive.name} (${drive.path})`}
-                        onClick={() => navigateTo(drive.path)}
+                        tooltip={
+                          drive.isMounted
+                            ? `${drive.name} — ${drive.path}${drive.size ? ` (${drive.size})` : ''}`
+                            : `${drive.name} — not mounted${drive.size ? ` (${drive.size})` : ''} — click to mount`
+                        }
+                        onClick={() => handleDriveClick(drive)}
+                        className={cn(!drive.isMounted && drive.path !== '/' && 'opacity-50')}
                       >
                         {drive.path === '/' ? (
                           <Slash size={16} className="text-muted-foreground/70" />
+                        ) : !drive.isMounted ? (
+                          <CircleDashed size={16} className="text-muted-foreground/40" />
                         ) : drive.isRemovable ? (
                           <Disc size={16} className="text-amber-400/70" />
                         ) : (
@@ -170,7 +202,7 @@ export function AppSidebar() {
                         )}
                         <span className="truncate">{drive.name}</span>
                         <span className="ml-auto font-mono text-[10px] text-muted-foreground/40 group-data-[collapsible=icon]:hidden">
-                          {drive.path}
+                          {drive.isMounted ? drive.size || drive.path : drive.size || 'unmounted'}
                         </span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

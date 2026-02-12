@@ -36,6 +36,10 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
     return fs.listDrives();
   });
 
+  ipcMain.handle(IpcChannels.FS_MOUNT_DRIVE, async (_event, devicePath: string) => {
+    return fs.mountDrive(devicePath);
+  });
+
   ipcMain.handle(
     IpcChannels.FS_OPEN_IN_EXPLORER,
     async (_event, path: string) => {

@@ -1,16 +1,19 @@
 import {
   readdir,
-  readFile,
   stat as fsStat,
   access,
   mkdir as fsMkdir,
   rm,
   rename as fsRename,
 } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { basename, dirname, join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { shell } from 'electron';
 import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/filesystem';
+
+const execFileAsync = promisify(execFile);
 
 export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
@@ -111,81 +114,136 @@ export class FilesystemService {
     const os = platform();
     const drives: DriveInfo[] = [];
 
-    // Always include root
+    // Always include root on Unix
     if (os !== 'win32') {
-      drives.push({ name: 'Root', path: '/', isRemovable: false });
+      drives.push({ name: 'Root', path: '/', isRemovable: false, isMounted: true });
     }
 
     if (os === 'linux') {
-      // Parse /proc/mounts for user-accessible mount points
-      try {
-        const mounts = await readFile('/proc/mounts', 'utf-8');
-        const removablePrefixes = ['/media/', '/mnt/', '/run/media/'];
-        const seen = new Set<string>();
-
-        for (const line of mounts.split('\n')) {
-          const parts = line.split(' ');
-          if (parts.length < 2) continue;
-          const mountPoint = parts[1];
-
-          if (!removablePrefixes.some((p) => mountPoint.startsWith(p))) continue;
-          if (seen.has(mountPoint)) continue;
-          seen.add(mountPoint);
-
-          // Verify we can actually access it
-          try {
-            await access(mountPoint);
-            drives.push({
-              name: basename(mountPoint),
-              path: mountPoint,
-              isRemovable: true,
-            });
-          } catch {
-            // No permission — skip
-          }
-        }
-      } catch {
-        // /proc/mounts not available
-      }
+      await this.listLinuxDrives(drives);
     } else if (os === 'darwin') {
-      // macOS: list /Volumes
-      try {
-        const volumes = await readdir('/Volumes');
-        for (const vol of volumes) {
-          const volPath = `/Volumes/${vol}`;
-          try {
-            await access(volPath);
-            // The boot volume is typically the first one or "Macintosh HD"
-            drives.push({
-              name: vol,
-              path: volPath,
-              isRemovable: vol !== 'Macintosh HD',
-            });
-          } catch {
-            // No access
-          }
-        }
-      } catch {
-        // /Volumes not readable
-      }
+      await this.listMacDrives(drives);
     } else if (os === 'win32') {
-      // Windows: check drive letters A-Z
-      for (let code = 65; code <= 90; code++) {
-        const letter = String.fromCharCode(code);
-        const drivePath = `${letter}:\\`;
-        try {
-          await access(drivePath);
-          drives.push({
-            name: `${letter}:`,
-            path: drivePath,
-            isRemovable: !['C'].includes(letter),
-          });
-        } catch {
-          // Drive doesn't exist or inaccessible
-        }
-      }
+      await this.listWindowsDrives(drives);
     }
 
     return drives;
+  }
+
+  /** Mount an unmounted partition via udisksctl. Returns the mount path. */
+  async mountDrive(devicePath: string): Promise<string> {
+    const { stdout } = await execFileAsync('udisksctl', ['mount', '-b', devicePath]);
+    // udisksctl outputs: "Mounted /dev/sdc1 at /run/media/user/Label."
+    const match = stdout.match(/at (.+?)\.?\s*$/);
+    if (match) return match[1];
+    throw new Error(`Could not parse mount point from: ${stdout}`);
+  }
+
+  private async listLinuxDrives(drives: DriveInfo[]): Promise<void> {
+    // System mount points to skip (they're internal OS partitions)
+    const systemMounts = new Set(['/', '/boot', '/boot/efi', '/home', '/root', '/srv', '[SWAP]']);
+    const systemPrefixes = ['/var/', '/sys/', '/proc/', '/dev/', '/run/docker/', '/snap/'];
+
+    try {
+      const { stdout } = await execFileAsync('lsblk', [
+        '-Jpo', 'NAME,MOUNTPOINT,FSTYPE,SIZE,RM,HOTPLUG,TYPE,LABEL',
+      ]);
+      const data = JSON.parse(stdout);
+
+      interface LsblkDevice {
+        name: string;
+        mountpoint: string | null;
+        fstype: string | null;
+        size: string;
+        rm: boolean;
+        hotplug: boolean;
+        type: string;
+        label: string | null;
+        children?: LsblkDevice[];
+      }
+
+      for (const disk of data.blockdevices as LsblkDevice[]) {
+        const partitions = disk.children || (disk.type === 'part' ? [disk] : []);
+        const parentRemovable = disk.rm || disk.hotplug;
+
+        for (const part of partitions) {
+          if (part.type !== 'part') continue;
+          if (!part.fstype) continue;
+          if (part.fstype === 'swap') continue;
+
+          const mounted = !!part.mountpoint && part.mountpoint !== '[SWAP]';
+          const mountPoint = part.mountpoint || '';
+          const isRemovable = part.rm || part.hotplug || parentRemovable;
+
+          // Skip system mount points for non-removable drives
+          if (mounted && !isRemovable) {
+            if (systemMounts.has(mountPoint)) continue;
+            if (systemPrefixes.some((p) => mountPoint.startsWith(p))) continue;
+          }
+
+          // For mounted drives, verify we can access them
+          if (mounted) {
+            try {
+              await access(mountPoint);
+            } catch {
+              continue; // No permission
+            }
+          }
+
+          const label = part.label || (mounted ? basename(mountPoint) : basename(part.name));
+          drives.push({
+            name: label,
+            path: mounted ? mountPoint : '',
+            devicePath: part.name,
+            isRemovable,
+            isMounted: mounted,
+            size: part.size,
+            fsType: part.fstype,
+          });
+        }
+      }
+    } catch {
+      // lsblk not available — no additional drives
+    }
+  }
+
+  private async listMacDrives(drives: DriveInfo[]): Promise<void> {
+    try {
+      const volumes = await readdir('/Volumes');
+      for (const vol of volumes) {
+        const volPath = `/Volumes/${vol}`;
+        try {
+          await access(volPath);
+          drives.push({
+            name: vol,
+            path: volPath,
+            isRemovable: vol !== 'Macintosh HD',
+            isMounted: true,
+          });
+        } catch {
+          // No access
+        }
+      }
+    } catch {
+      // /Volumes not readable
+    }
+  }
+
+  private async listWindowsDrives(drives: DriveInfo[]): Promise<void> {
+    for (let code = 65; code <= 90; code++) {
+      const letter = String.fromCharCode(code);
+      const drivePath = `${letter}:\\`;
+      try {
+        await access(drivePath);
+        drives.push({
+          name: `${letter}:`,
+          path: drivePath,
+          isRemovable: !['C'].includes(letter),
+          isMounted: true,
+        });
+      } catch {
+        // Drive doesn't exist or inaccessible
+      }
+    }
   }
 }

@@ -17,7 +17,11 @@ export interface DirectoryListing {
 export interface DriveInfo {
   name: string;
   path: string;
+  devicePath?: string;
   isRemovable: boolean;
+  isMounted: boolean;
+  size?: string;
+  fsType?: string;
 }
 
 export type SortField = 'name' | 'size' | 'modifiedAt';
