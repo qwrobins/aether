@@ -1,6 +1,14 @@
 import SftpClient from 'ssh2-sftp-client';
+import { homedir } from 'node:os';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { SftpConnectionProfile } from '@shared/types/connection';
+
+function expandTilde(filePath: string): string {
+  if (filePath.startsWith('~/') || filePath === '~') {
+    return filePath.replace('~', homedir());
+  }
+  return filePath;
+}
 
 export class SftpService {
   private clients: Map<string, SftpClient> = new Map();
@@ -18,7 +26,7 @@ export class SftpService {
       config.password = profile.password;
     } else if (profile.authMethod === 'key' && profile.privateKeyPath) {
       const fs = await import('node:fs/promises');
-      config.privateKey = await fs.readFile(profile.privateKeyPath, 'utf-8');
+      config.privateKey = await fs.readFile(expandTilde(profile.privateKeyPath), 'utf-8');
       if (profile.passphrase) {
         config.passphrase = profile.passphrase;
       }

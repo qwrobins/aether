@@ -40,6 +40,9 @@ export const IpcChannels = {
   TRANSFER_COMPLETE: 'transfer:complete',
   TRANSFER_ERROR: 'transfer:error',
 
+  // Dialogs
+  DIALOG_OPEN_FILE: 'dialog:open-file',
+
   // Window controls
   WINDOW_CLOSE: 'window:close',
   WINDOW_MINIMIZE: 'window:minimize',

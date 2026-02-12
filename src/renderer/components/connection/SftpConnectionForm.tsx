@@ -1,6 +1,9 @@
+import { useCallback } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { FolderOpen } from 'lucide-react';
 
 interface SftpConnectionFormProps {
   formData: Record<string, string>;
@@ -8,6 +11,18 @@ interface SftpConnectionFormProps {
 }
 
 export function SftpConnectionForm({ formData, onChange }: SftpConnectionFormProps) {
+  const browseForKey = useCallback(async () => {
+    const homePath = await window.api.invoke('fs:get-home');
+    const filePath = await window.api.invoke('dialog:open-file', {
+      title: 'Select SSH Private Key',
+      defaultPath: `${homePath}/.ssh`,
+      filters: [{ name: 'All Files', extensions: ['*'] }],
+    });
+    if (filePath) {
+      onChange('privateKeyPath', filePath);
+    }
+  }, [onChange]);
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
@@ -82,12 +97,26 @@ export function SftpConnectionForm({ formData, onChange }: SftpConnectionFormPro
           <TabsContent value="key" className="mt-3 space-y-3">
             <div className="space-y-2">
               <Label htmlFor="sftp-key-path">Private Key Path</Label>
-              <Input
-                id="sftp-key-path"
-                placeholder="~/.ssh/id_rsa"
-                value={formData.privateKeyPath ?? ''}
-                onChange={(e) => onChange('privateKeyPath', e.target.value)}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="sftp-key-path"
+                  placeholder="/home/user/.ssh/id_rsa"
+                  value={formData.privateKeyPath ?? ''}
+                  onChange={(e) => onChange('privateKeyPath', e.target.value)}
+                  className="flex-1 font-mono text-[12px]"
+                  readOnly
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5"
+                  onClick={browseForKey}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Browse
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="sftp-passphrase">Passphrase</Label>

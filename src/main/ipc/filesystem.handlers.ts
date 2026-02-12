@@ -1,4 +1,4 @@
-import type { IpcMain } from 'electron';
+import { type IpcMain, dialog, BrowserWindow } from 'electron';
 import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
 
@@ -36,6 +36,23 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
     IpcChannels.FS_OPEN_IN_EXPLORER,
     async (_event, path: string) => {
       fs.openInExplorer(path);
+    },
+  );
+
+  ipcMain.handle(
+    IpcChannels.DIALOG_OPEN_FILE,
+    async (_event, options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
+      const parentWindow = BrowserWindow.getFocusedWindow();
+      const result = await dialog.showOpenDialog(
+        ...(parentWindow ? [parentWindow] : []),
+        {
+          title: options?.title ?? 'Select File',
+          defaultPath: options?.defaultPath,
+          filters: options?.filters,
+          properties: ['openFile', 'showHiddenFiles'],
+        },
+      );
+      return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
     },
   );
 }
