@@ -6,7 +6,7 @@ import {
   ContextMenuShortcut,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { FolderPlus, Trash2, Pencil, Copy, Download, Upload, ExternalLink } from 'lucide-react';
+import { Trash2, Pencil, Copy, Download, Upload, ExternalLink } from 'lucide-react';
 import type { FileEntry } from '@shared/types/filesystem';
 
 interface FileContextMenuProps {
@@ -17,8 +17,7 @@ interface FileContextMenuProps {
   panelType: 'local' | 'remote';
   onNavigate: (path: string) => void;
   onDelete: (paths: string[]) => void;
-  onRename: (oldPath: string, newName: string) => void;
-  onNewFolder: () => void;
+  onRename: (oldPath: string) => void;
   onTransfer: (entry: FileEntry) => void;
 }
 
@@ -31,7 +30,6 @@ export function FileContextMenu({
   onNavigate,
   onDelete,
   onRename,
-  onNewFolder,
   onTransfer,
 }: FileContextMenuProps) {
   return (
@@ -53,17 +51,7 @@ export function FileContextMenu({
           {panelType === 'local' ? 'Upload' : 'Download'}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={onNewFolder}>
-          <FolderPlus className="mr-2 h-4 w-4" />
-          New Folder
-          <ContextMenuShortcut>Ctrl+N</ContextMenuShortcut>
-        </ContextMenuItem>
-        <ContextMenuItem
-          onClick={() => {
-            const newName = prompt('Rename to:', entry.name);
-            if (newName && newName !== entry.name) onRename(entry.path, newName);
-          }}
-        >
+        <ContextMenuItem onClick={() => onRename(entry.path)}>
           <Pencil className="mr-2 h-4 w-4" />
           Rename
           <ContextMenuShortcut>F2</ContextMenuShortcut>

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useTransferStore } from '@/stores/transferStore';
+import { usePromptStore } from '@/stores/promptStore';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
@@ -117,15 +118,32 @@ export function LocalPanel() {
   );
 
   const handleRename = useCallback(
-    (oldPath: string, newName: string) => {
-      const newPath = oldPath.replace(/[^/]+$/, newName);
-      window.api.invoke('fs:rename', oldPath, newPath).then(() => refresh());
+    async (oldPath: string) => {
+      const oldName = oldPath.split('/').pop() ?? '';
+      const newName = await usePromptStore.getState().open({
+        title: 'Rename',
+        defaultValue: oldName,
+        placeholder: 'New name',
+      });
+      if (newName && newName !== oldName) {
+        const newPath = oldPath.replace(/[^/]+$/, newName);
+        try {
+          await window.api.invoke('fs:rename', oldPath, newPath);
+          refresh();
+        } catch (err) {
+          console.error('[Aether] Rename failed:', err);
+          toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     },
     [refresh]
   );
 
-  const handleNewFolder = useCallback(() => {
-    const name = prompt('New folder name:');
+  const handleNewFolder = useCallback(async () => {
+    const name = await usePromptStore.getState().open({
+      title: 'New Folder',
+      placeholder: 'Folder name',
+    });
     if (name) {
       const newPath = currentPath + '/' + name;
       window.api.invoke('fs:mkdir', newPath).then(() => refresh());
@@ -195,6 +213,7 @@ export function LocalPanel() {
         isActive={true}
         onNavigate={navigateTo}
         onRefresh={refresh}
+        onNewFolder={handleNewFolder}
       />
 
       {error && (

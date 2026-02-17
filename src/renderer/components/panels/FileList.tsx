@@ -1,5 +1,12 @@
-import { ChevronUp, ChevronDown, FolderOpen } from 'lucide-react';
+import { ChevronUp, ChevronDown, FolderOpen, FolderPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import {
   Table,
   TableHeader,
@@ -26,7 +33,7 @@ interface FileListProps {
   onNavigate: (path: string) => void;
   onSort: (field: SortField) => void;
   onDelete: (paths: string[]) => void;
-  onRename: (oldPath: string, newName: string) => void;
+  onRename: (oldPath: string) => void;
   onNewFolder: () => void;
   onTransfer: (entry: FileEntry) => void;
 }
@@ -87,71 +94,92 @@ export function FileList({
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <EmptyState icon={FolderOpen} title="This folder is empty" />
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="flex flex-1 items-center justify-center">
+            <EmptyState icon={FolderOpen} title="This folder is empty" />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <ContextMenuItem onClick={onNewFolder}>
+            <FolderPlus className="mr-2 h-4 w-4" />
+            New Folder
+            <ContextMenuShortcut>Ctrl+N</ContextMenuShortcut>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden" role="grid" aria-label="File list">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-b border-border/50 hover:bg-transparent">
-            <TableHead className="w-[20px] px-2" />
-            <TableHead
-              className="cursor-pointer select-none px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-              onClick={() => onSort('name')}
-            >
-              <span className="flex items-center gap-1">
-                Name
-                <SortIndicator field="name" sortField={sortField} sortDirection={sortDirection} />
-              </span>
-            </TableHead>
-            <TableHead
-              className="w-[80px] cursor-pointer select-none px-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-              onClick={() => onSort('size')}
-            >
-              <span className="flex items-center justify-end gap-1">
-                Size
-                <SortIndicator field="size" sortField={sortField} sortDirection={sortDirection} />
-              </span>
-            </TableHead>
-            <TableHead
-              className="w-[120px] cursor-pointer select-none px-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
-              onClick={() => onSort('modifiedAt')}
-            >
-              <span className="flex items-center justify-end gap-1">
-                Modified
-                <SortIndicator field="modifiedAt" sortField={sortField} sortDirection={sortDirection} />
-              </span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-      </Table>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <Table>
-          <TableBody>
-            {entries.map((entry, index) => (
-              <FileItem
-                key={entry.path}
-                entry={entry}
-                index={index}
-                isSelected={selectedFiles.has(entry.path)}
-                allEntries={entries}
-                selectedFiles={selectedFiles}
-                panelType={panelType}
-                onSelect={onSelect}
-                onNavigate={onNavigate}
-                onDelete={onDelete}
-                onRename={onRename}
-                onNewFolder={onNewFolder}
-                onTransfer={onTransfer}
-              />
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden" role="grid" aria-label="File list">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-border/50 hover:bg-transparent">
+                <TableHead className="w-[20px] px-2" />
+                <TableHead
+                  className="cursor-pointer select-none px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  onClick={() => onSort('name')}
+                >
+                  <span className="flex items-center gap-1">
+                    Name
+                    <SortIndicator field="name" sortField={sortField} sortDirection={sortDirection} />
+                  </span>
+                </TableHead>
+                <TableHead
+                  className="w-[80px] cursor-pointer select-none px-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  onClick={() => onSort('size')}
+                >
+                  <span className="flex items-center justify-end gap-1">
+                    Size
+                    <SortIndicator field="size" sortField={sortField} sortDirection={sortDirection} />
+                  </span>
+                </TableHead>
+                <TableHead
+                  className="w-[120px] cursor-pointer select-none px-2 text-right text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  onClick={() => onSort('modifiedAt')}
+                >
+                  <span className="flex items-center justify-end gap-1">
+                    Modified
+                    <SortIndicator field="modifiedAt" sortField={sortField} sortDirection={sortDirection} />
+                  </span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+          </Table>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <Table>
+              <TableBody>
+                {entries.map((entry, index) => (
+                  <FileItem
+                    key={entry.path}
+                    entry={entry}
+                    index={index}
+                    isSelected={selectedFiles.has(entry.path)}
+                    allEntries={entries}
+                    selectedFiles={selectedFiles}
+                    panelType={panelType}
+                    onSelect={onSelect}
+                    onNavigate={onNavigate}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    onTransfer={onTransfer}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-48">
+        <ContextMenuItem onClick={onNewFolder}>
+          <FolderPlus className="mr-2 h-4 w-4" />
+          New Folder
+          <ContextMenuShortcut>Ctrl+N</ContextMenuShortcut>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

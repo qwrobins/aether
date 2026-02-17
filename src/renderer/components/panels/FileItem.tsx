@@ -17,8 +17,7 @@ interface FileItemProps {
   onSelect: (path: string, multi: boolean, shift?: boolean) => void;
   onNavigate: (path: string) => void;
   onDelete: (paths: string[]) => void;
-  onRename: (oldPath: string, newName: string) => void;
-  onNewFolder: () => void;
+  onRename: (oldPath: string) => void;
   onTransfer: (entry: FileEntry) => void;
 }
 
@@ -50,7 +49,6 @@ export function FileItem({
   onNavigate,
   onDelete,
   onRename,
-  onNewFolder,
   onTransfer,
 }: FileItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
@@ -82,7 +80,6 @@ export function FileItem({
       onNavigate={onNavigate}
       onDelete={onDelete}
       onRename={onRename}
-      onNewFolder={onNewFolder}
       onTransfer={onTransfer}
     >
       <TableRow

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTransferStore } from '@/stores/transferStore';
+import { usePromptStore } from '@/stores/promptStore';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
@@ -241,8 +242,15 @@ export function RemotePanel() {
   );
 
   const handleRename = useCallback(
-    (oldPath: string, newName: string) => {
+    async (oldPath: string) => {
       if (!activeConnectionId || !activeProfile) return;
+      const oldName = oldPath.split('/').pop() ?? '';
+      const newName = await usePromptStore.getState().open({
+        title: 'Rename',
+        defaultValue: oldName,
+        placeholder: 'New name',
+      });
+      if (!newName || newName === oldName) return;
 
       if (activeProfile.type === 'sftp') {
         const newPath = oldPath.replace(/[^/]+$/, newName);
@@ -255,9 +263,12 @@ export function RemotePanel() {
     [activeConnectionId, activeProfile, refresh]
   );
 
-  const handleNewFolder = useCallback(() => {
+  const handleNewFolder = useCallback(async () => {
     if (!activeConnectionId || !activeProfile) return;
-    const name = prompt('New folder name:');
+    const name = await usePromptStore.getState().open({
+      title: 'New Folder',
+      placeholder: 'Folder name',
+    });
     if (!name) return;
 
     if (activeProfile.type === 's3' && currentBucket) {
@@ -363,6 +374,7 @@ export function RemotePanel() {
           isActive={true}
           onNavigate={navigateTo}
           onRefresh={refresh}
+          onNewFolder={handleNewFolder}
         />
 
         {error && (
@@ -424,6 +436,7 @@ export function RemotePanel() {
         isActive={true}
         onNavigate={navigateTo}
         onRefresh={refresh}
+        onNewFolder={handleNewFolder}
       />
 
       {error && (
