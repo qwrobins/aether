@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
+import { usePromptStore } from '@/stores/promptStore';
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -10,6 +11,9 @@ export function useKeyboardShortcuts() {
 
       // Don't handle shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Don't handle shortcuts when a dialog is open
+      if (usePromptStore.getState().isOpen) return;
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
@@ -80,26 +84,37 @@ export function useKeyboardShortcuts() {
 
       if (isCtrl && e.key === 'n') {
         e.preventDefault();
-        const name = prompt('New folder name:');
-        if (name) {
-          const localStore = useLocalPanelStore.getState();
-          const newPath = localStore.currentPath + '/' + name;
-          window.api.invoke('fs:mkdir', newPath).then(() => localStore.refresh());
-        }
+        (async () => {
+          const name = await usePromptStore.getState().open({
+            title: 'New Folder',
+            placeholder: 'Folder name',
+          });
+          if (name) {
+            const localStore = useLocalPanelStore.getState();
+            const newPath = localStore.currentPath + '/' + name;
+            window.api.invoke('fs:mkdir', newPath).then(() => localStore.refresh());
+          }
+        })();
       }
 
       if (e.key === 'F2') {
         e.preventDefault();
-        const localStore = useLocalPanelStore.getState();
-        if (localStore.selectedFiles.size === 1) {
-          const oldPath = Array.from(localStore.selectedFiles)[0];
-          const oldName = oldPath.split('/').pop();
-          const newName = prompt('Rename to:', oldName);
-          if (newName && newName !== oldName) {
-            const newPath = oldPath.replace(/[^/]+$/, newName);
-            window.api.invoke('fs:rename', oldPath, newPath).then(() => localStore.refresh());
+        (async () => {
+          const localStore = useLocalPanelStore.getState();
+          if (localStore.selectedFiles.size === 1) {
+            const oldPath = Array.from(localStore.selectedFiles)[0];
+            const oldName = oldPath.split('/').pop() ?? '';
+            const newName = await usePromptStore.getState().open({
+              title: 'Rename',
+              defaultValue: oldName,
+              placeholder: 'New name',
+            });
+            if (newName && newName !== oldName) {
+              const newPath = oldPath.replace(/[^/]+$/, newName);
+              window.api.invoke('fs:rename', oldPath, newPath).then(() => localStore.refresh());
+            }
           }
-        }
+        })();
       }
 
       if (e.key === 'Escape') {

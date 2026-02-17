@@ -10,6 +10,7 @@ import { AppSidebar } from './AppSidebar';
 import { LocalPanel } from '@/components/panels/LocalPanel';
 import { RemotePanel } from '@/components/panels/RemotePanel';
 import { TransferQueue } from '@/components/transfer/TransferQueue';
+import { PromptDialog } from '@/components/shared/PromptDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { GripHorizontal } from 'lucide-react';
 
@@ -69,6 +70,7 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
+      <PromptDialog />
       <TitleBar />
       <SidebarProvider defaultOpen={true}>
         <div className="flex min-h-0 flex-1 overflow-hidden">
