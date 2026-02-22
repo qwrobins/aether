@@ -81,7 +81,7 @@ export function PathBreadcrumb({
             const realIndex = shouldCollapse
               ? displaySegments.length - 2 + i
               : i;
-            const fullIndex = isUnix ? realIndex : realIndex + 1;
+            const fullIndex = isS3Prefix ? realIndex : isUnix ? realIndex : realIndex + 1;
             const isLast = realIndex === displaySegments.length - 1;
 
             return (
