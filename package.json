@@ -9,6 +9,7 @@
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
+    "install:appimage": "bash ./scripts/install-appimage.sh",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx ."
   },

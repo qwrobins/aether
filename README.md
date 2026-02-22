@@ -109,7 +109,21 @@ Creates distributable installers. Configured makers:
 |---|---|
 | Windows | Squirrel |
 | macOS | ZIP |
-| Linux | DEB, RPM |
+| Linux | DEB, RPM, AppImage |
+
+### Install AppImage (Linux)
+
+After building, install the latest AppImage into your applications menu:
+
+```bash
+npm run install:appimage
+```
+
+You can also pass a specific file:
+
+```bash
+./scripts/install-appimage.sh /path/to/Aether-0.1.1-x64.AppImage
+```
 
 ---
 
