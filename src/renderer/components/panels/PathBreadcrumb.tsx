@@ -30,13 +30,7 @@ export function PathBreadcrumb({
   let displaySegments = segments;
 
   if (isS3Prefix) {
-    rootLabel = '/';
     rootPath = '';
-    displaySegments = segments;
-  } else if (isUnix) {
-    rootLabel = '/';
-    rootPath = '/';
-    displaySegments = segments;
   } else {
     rootLabel = segments[0] ? `${segments[0]}/` : '/';
     rootPath = segments[0] ? `${segments[0]}/` : '/';
@@ -75,7 +69,7 @@ export function PathBreadcrumb({
               <BreadcrumbLink
                 className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
                 onClick={() => {
-                  const idx = isS3Prefix ? 0 : isUnix ? 0 : 1;
+                  const idx = (isS3Prefix || isUnix) ? 0 : 1;
                   onNavigate(buildPath(idx));
                 }}
               >
@@ -94,7 +88,7 @@ export function PathBreadcrumb({
             const realIndex = shouldCollapse
               ? displaySegments.length - 2 + i
               : i;
-            const fullIndex = isS3Prefix ? realIndex : isUnix ? realIndex : realIndex + 1;
+            const fullIndex = (isS3Prefix || isUnix) ? realIndex : realIndex + 1;
             const isLast = realIndex === displaySegments.length - 1;
 
             return (
