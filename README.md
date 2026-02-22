@@ -122,7 +122,7 @@ npm run install:appimage
 You can also pass a specific file:
 
 ```bash
-./scripts/install-appimage.sh /path/to/Aether-0.1.1-x64.AppImage
+./scripts/install-appimage.sh /path/to/Aether-0.1.2-x64.AppImage
 ```
 
 ---

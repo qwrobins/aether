@@ -25,9 +25,23 @@ export function PathBreadcrumb({
 
   // On Unix, the root is "/"; on Windows it might be "C:/"
   const isUnix = normalized.startsWith('/');
-  const rootLabel = isS3Prefix ? '/' : isUnix ? '/' : segments[0] ? `${segments[0]}/` : '/';
-  const rootPath = isS3Prefix ? '' : isUnix ? '/' : segments[0] ? `${segments[0]}/` : '/';
-  const displaySegments = isS3Prefix ? segments : isUnix ? segments : segments.slice(1);
+  let rootLabel = '/';
+  let rootPath = '/';
+  let displaySegments = segments;
+
+  if (isS3Prefix) {
+    rootLabel = '/';
+    rootPath = '';
+    displaySegments = segments;
+  } else if (isUnix) {
+    rootLabel = '/';
+    rootPath = '/';
+    displaySegments = segments;
+  } else {
+    rootLabel = segments[0] ? `${segments[0]}/` : '/';
+    rootPath = segments[0] ? `${segments[0]}/` : '/';
+    displaySegments = segments.slice(1);
+  }
 
   const MAX_VISIBLE = 4;
   const shouldCollapse = displaySegments.length > MAX_VISIBLE;
