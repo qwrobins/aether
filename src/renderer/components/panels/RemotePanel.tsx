@@ -437,6 +437,7 @@ export function RemotePanel() {
         onNavigate={navigateTo}
         onRefresh={refresh}
         onNewFolder={handleNewFolder}
+        breadcrumbMode="s3-prefix"
       />
 
       {error && (
