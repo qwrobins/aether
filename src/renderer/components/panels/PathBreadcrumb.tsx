@@ -36,9 +36,8 @@ export function PathBreadcrumb({
     : displaySegments;
 
   function buildPath(segmentIndex: number): string {
-    const allSegments = segments;
     const upTo = segmentIndex + 1;
-    const joined = allSegments.slice(0, upTo).join('/');
+    const joined = segments.slice(0, upTo).join('/');
     if (isS3Prefix) return joined ? `${joined}/` : '';
     return isUnix ? `/${joined}` : joined;
   }
