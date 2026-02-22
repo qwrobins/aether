@@ -31,7 +31,7 @@ export function PathBreadcrumb({
 
   if (isS3Prefix) {
     rootPath = '';
-  } else {
+  } else if (!isUnix) {
     rootLabel = segments[0] ? `${segments[0]}/` : '/';
     rootPath = segments[0] ? `${segments[0]}/` : '/';
     displaySegments = segments.slice(1);
