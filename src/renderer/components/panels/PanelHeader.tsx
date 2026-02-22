@@ -10,9 +10,18 @@ interface PanelHeaderProps {
   onNavigate: (path: string) => void;
   onRefresh: () => void;
   onNewFolder?: () => void;
+  breadcrumbMode?: 'filesystem' | 's3-prefix';
 }
 
-export function PanelHeader({ label, path, isActive, onNavigate, onRefresh, onNewFolder }: PanelHeaderProps) {
+export function PanelHeader({
+  label,
+  path,
+  isActive,
+  onNavigate,
+  onRefresh,
+  onNewFolder,
+  breadcrumbMode,
+}: PanelHeaderProps) {
   return (
     <div
       className={cn(
@@ -25,7 +34,7 @@ export function PanelHeader({ label, path, isActive, onNavigate, onRefresh, onNe
       </span>
 
       <div className="min-w-0 flex-1">
-        <PathBreadcrumb path={path} onNavigate={onNavigate} />
+        <PathBreadcrumb path={path} onNavigate={onNavigate} mode={breadcrumbMode} />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
