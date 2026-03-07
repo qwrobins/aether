@@ -146,6 +146,54 @@ describe('TransferService', () => {
     expect(service.getTransfer(id)).toMatchObject({ status: 'completed', retryCount: 1, size: 25 });
   });
 
+  it('does not retry deterministic setup failures', async () => {
+    vi.useFakeTimers();
+
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    const id = await service.enqueue(createRequest({ bucket: undefined }), undefined);
+    await flushQueue();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(service.getTransfer(id)).toMatchObject({
+      status: 'failed',
+      retryCount: 0,
+      error: 'S3 client is not connected',
+    });
+    expect(send).toHaveBeenCalledWith(
+      'transfer:error',
+      expect.objectContaining({ transferId: id, error: 'S3 client is not connected' }),
+    );
+  });
+
+  it('does not retry missing S3 buckets', async () => {
+    vi.useFakeTimers();
+
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+    statMock.mockResolvedValue({ size: 10 });
+    createReadStreamMock.mockReturnValue({});
+
+    const id = await service.enqueue(createRequest({ bucket: undefined }), {} as never);
+    await flushQueue();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(service.getTransfer(id)).toMatchObject({
+      status: 'failed',
+      retryCount: 0,
+      error: 'Bucket is required for S3 transfers',
+    });
+    expect(send).toHaveBeenCalledWith(
+      'transfer:error',
+      expect.objectContaining({ transferId: id, error: 'Bucket is required for S3 transfers' }),
+    );
+  });
+
   it('cancels active transfers and emits a cancelled completion result', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);

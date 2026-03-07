@@ -29,13 +29,20 @@ type SftpTransferClient = {
   ) => Promise<void>;
 };
 
+class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Transfer failed';
 }
 
 function getRequiredBucket(item: TransferItem): string {
   if (!item.bucket) {
-    throw new Error('Bucket is required for S3 transfers');
+    throw new NonRetryableError('Bucket is required for S3 transfers');
   }
   return item.bucket;
 }
@@ -112,10 +119,10 @@ export class TransferService {
 
     try {
       if (item.connectionType === 's3') {
-        if (!s3Client) throw new Error('S3 client is not connected');
+        if (!s3Client) throw new NonRetryableError('S3 client is not connected');
         await this.executeS3Transfer(item, s3Client, signal, startTime);
       } else if (item.connectionType === 'sftp') {
-        if (!sftpClient) throw new Error('SFTP client is not connected');
+        if (!sftpClient) throw new NonRetryableError('SFTP client is not connected');
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
       }
 
@@ -132,7 +139,7 @@ export class TransferService {
         item.error = getErrorMessage(error);
         this.emitError(item.id, item.error);
 
-        if (item.retryCount < 3) {
+        if (!(error instanceof NonRetryableError) && item.retryCount < 3) {
           item.retryCount++;
           item.status = 'queued';
           item.bytesTransferred = 0;
@@ -202,7 +209,7 @@ export class TransferService {
       item.size = response.ContentLength || 0;
       const body = response.Body;
       if (!body) {
-        throw new Error('S3 response body is empty');
+        throw new NonRetryableError('S3 response body is empty');
       }
       const writeStream = createWriteStream(item.destinationPath);
 
