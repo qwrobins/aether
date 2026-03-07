@@ -44,6 +44,7 @@ function profile(overrides: Partial<SftpConnectionProfile> = {}): SftpConnection
 describe('SftpService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('connects with password auth', async () => {
@@ -135,5 +136,6 @@ describe('SftpService', () => {
     expect(mockClient.rmdir).toHaveBeenCalledWith('/remote/folder', true);
     expect(mockClient.delete).toHaveBeenCalledWith('/remote/file.txt');
     expect(consoleError).toHaveBeenCalledWith('Failed to delete /remote/missing:', expect.any(Error));
+    consoleError.mockRestore();
   });
 });
