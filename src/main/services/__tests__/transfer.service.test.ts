@@ -238,6 +238,32 @@ describe('TransferService', () => {
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: 'download-1', totalBytes: 5 }));
   });
 
+  it('throws a clear error when an S3 download has no body stream', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    const item: TransferItem = {
+      id: 'download-empty',
+      fileName: 'empty.txt',
+      sourcePath: 'folder/empty.txt',
+      destinationPath: '/tmp/empty.txt',
+      direction: 'download',
+      connectionId: 'conn-1',
+      connectionType: 's3',
+      bucket: 'bucket',
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    await expect(
+      internals.executeS3Transfer(item, { send: vi.fn().mockResolvedValue({ ContentLength: 0, Body: undefined }) }),
+    ).rejects.toThrow('S3 response body is empty');
+  });
+
   it('uploads via SFTP and ignores mkdir failures for existing directories', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);

@@ -200,11 +200,14 @@ export class TransferService {
       );
 
       item.size = response.ContentLength || 0;
-      const body = response.Body as AsyncIterable<Buffer>;
+      const body = response.Body;
+      if (!body) {
+        throw new Error('S3 response body is empty');
+      }
       const writeStream = createWriteStream(item.destinationPath);
 
       let downloaded = 0;
-      for await (const chunk of body) {
+      for await (const chunk of body as AsyncIterable<Buffer>) {
         if (signal?.aborted) throw new Error('Aborted');
         writeStream.write(chunk);
         downloaded += chunk.length;
