@@ -154,4 +154,73 @@ describe('useRemotePanelStore', () => {
 
     expect(navigateTo).toHaveBeenCalledWith('foo/');
   });
+
+  it('handles connection and bucket-list failures cleanly', async () => {
+    window.api.invoke = vi.fn().mockRejectedValue(new Error('offline'));
+
+    await useRemotePanelStore.getState().connect(s3Profile());
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      connectionStatus: 'error',
+      connectionError: 'offline',
+      activeConnectionId: null,
+    });
+
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+    });
+
+    await useRemotePanelStore.getState().loadBuckets();
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      error: 'offline',
+      isLoading: false,
+    });
+  });
+
+  it('supports selection helpers, sort toggling, and disconnect reset', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 'sftp-1',
+      activeProfile: sftpProfile(),
+      connectionStatus: 'connected',
+      currentPath: '/remote',
+      entries: [
+        fileEntry({ name: 'b-folder', path: '/remote/b-folder', isDirectory: true, size: 0 }),
+        fileEntry({ name: 'a-folder', path: '/remote/a-folder', isDirectory: true, size: 0 }),
+        fileEntry({ name: 'z.txt', path: '/remote/z.txt', size: 50 }),
+        fileEntry({ name: 'a.txt', path: '/remote/a.txt', size: 10 }),
+      ],
+    });
+    window.api.invoke = vi.fn().mockResolvedValue(undefined);
+
+    useRemotePanelStore.getState().selectFile('/remote/a-folder');
+    useRemotePanelStore.getState().selectFile('/remote/z.txt', true);
+    expect(Array.from(useRemotePanelStore.getState().selectedFiles)).toEqual(['/remote/a-folder', '/remote/z.txt']);
+
+    useRemotePanelStore.getState().selectAll();
+    expect(useRemotePanelStore.getState().selectedFiles.size).toBe(4);
+
+    useRemotePanelStore.getState().clearSelection();
+    expect(useRemotePanelStore.getState().selectedFiles.size).toBe(0);
+
+    useRemotePanelStore.getState().setSort('size');
+    expect(useRemotePanelStore.getState().entries.map((item: FileEntry) => item.name)).toEqual([
+      'b-folder',
+      'a-folder',
+      'a.txt',
+      'z.txt',
+    ]);
+
+    useRemotePanelStore.getState().setViewMode('grid');
+    expect(useRemotePanelStore.getState().viewMode).toBe('grid');
+
+    await useRemotePanelStore.getState().disconnect();
+    expect(window.api.invoke).toHaveBeenCalledWith('conn:disconnect', 'sftp-1');
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      activeConnectionId: null,
+      connectionStatus: 'disconnected',
+      currentPath: '',
+      currentBucket: null,
+    });
+  });
 });
