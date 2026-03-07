@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useUiStore } from '../uiStore';
+import { useUiStore } from '@/stores/uiStore';
 
 describe('useUiStore', () => {
   beforeEach(() => {

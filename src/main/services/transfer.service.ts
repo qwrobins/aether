@@ -111,6 +111,12 @@ export class TransferService {
     sftpClient?: SftpTransferClient,
     signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) {
+      item.status = 'cancelled';
+      this.emitComplete(item.id, false, 'Cancelled');
+      return;
+    }
+
     item.status = 'active';
     item.startedAt = new Date().toISOString();
     this.emitProgress(item.id, 0, item.size, 0);
@@ -124,6 +130,12 @@ export class TransferService {
       } else if (item.connectionType === 'sftp') {
         if (!sftpClient) throw new NonRetryableError('SFTP client is not connected');
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
+      }
+
+      if (signal?.aborted) {
+        item.status = 'cancelled';
+        this.emitComplete(item.id, false, 'Cancelled');
+        return;
       }
 
       item.status = 'completed';
@@ -145,6 +157,12 @@ export class TransferService {
           item.bytesTransferred = 0;
           const delay = Math.pow(2, item.retryCount) * 1000;
           setTimeout(() => {
+            if (signal?.aborted) {
+              item.status = 'cancelled';
+              this.emitComplete(item.id, false, 'Cancelled');
+              return;
+            }
+
             this.queue
               .add(async () => {
                 await this.executeTransfer(item, s3Client, sftpClient, signal);
@@ -192,6 +210,7 @@ export class TransferService {
       }
 
       await upload.done();
+      if (signal?.aborted) throw new Error('Aborted');
     } else {
       const destDir = path.dirname(item.destinationPath);
       if (destDir && destDir !== '.' && destDir !== '/') {
@@ -262,6 +281,7 @@ export class TransferService {
           this.emitProgress(item.id, totalTransferred, total, item.speed);
         },
       });
+      if (signal?.aborted) throw new Error('Aborted');
     } else {
       const destDir = path.dirname(item.destinationPath);
       if (destDir && destDir !== '.' && destDir !== '/') {
@@ -281,6 +301,7 @@ export class TransferService {
           this.emitProgress(item.id, totalTransferred, total, item.speed);
         },
       });
+      if (signal?.aborted) throw new Error('Aborted');
     }
   }
 

@@ -29,6 +29,17 @@ type TransferServiceInternals = {
   emitProgress: (id: string, bytes: number, total: number, speed: number) => void;
   transfers: Map<string, TransferItem>;
   abortControllers: Map<string, AbortController>;
+  executeTransfer: (
+    item: TransferItem,
+    s3Client?: { send: ReturnType<typeof vi.fn> },
+    sftpClient?: {
+      mkdir: ReturnType<typeof vi.fn>;
+      fastPut: ReturnType<typeof vi.fn>;
+      stat: ReturnType<typeof vi.fn>;
+      fastGet: ReturnType<typeof vi.fn>;
+    },
+    signal?: AbortSignal,
+  ) => Promise<void>;
   executeS3Transfer: (
     item: TransferItem,
     client: { send: ReturnType<typeof vi.fn> },
@@ -220,6 +231,39 @@ describe('TransferService', () => {
     );
   });
 
+  it('does not mark an already-aborted transfer as completed', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    const controller = new AbortController();
+    controller.abort();
+    const item: TransferItem = {
+      id: 'aborted-before-start',
+      fileName: 'demo.txt',
+      ...createRequest(),
+      size: 0,
+      bytesTransferred: 0,
+      status: 'queued',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    await internals.executeTransfer(item, {} as never, undefined, controller.signal);
+
+    expect(item.status).toBe('cancelled');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: 'aborted-before-start', success: false, error: 'Cancelled' }),
+    );
+    expect(send).not.toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: 'aborted-before-start', success: true }),
+    );
+  });
+
   it('clears only terminal transfers', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
@@ -388,5 +432,39 @@ describe('TransferService', () => {
     expect(client.fastGet).toHaveBeenCalledWith('/remote/archive.tgz', '/tmp/downloads/archive.tgz', expect.any(Object));
     expect(item.size).toBe(42);
     expect(item.bytesTransferred).toBe(42);
+  });
+
+  it('treats aborted SFTP downloads as cancelled even if fastGet resolves', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    const controller = new AbortController();
+    const client = {
+      mkdir: vi.fn(),
+      fastPut: vi.fn(),
+      stat: vi.fn().mockResolvedValue({ size: 42 }),
+      fastGet: vi.fn(async (_source: string, _dest: string, options: { step: (a: number, b: number, c: number) => void }) => {
+        controller.abort();
+        options.step(42, 42, 42);
+      }),
+    };
+
+    const item: TransferItem = {
+      id: 'sftp-download-cancelled',
+      fileName: 'archive.tgz',
+      sourcePath: '/remote/archive.tgz',
+      destinationPath: '/tmp/downloads/archive.tgz',
+      direction: 'download',
+      connectionId: 'conn-1',
+      connectionType: 'sftp',
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    await expect(internals.executeSftpTransfer(item, client, controller.signal)).rejects.toThrow('Aborted');
   });
 });

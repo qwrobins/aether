@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { useEffect } from 'react';
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferEvents } from '../useTransferEvents';
@@ -11,7 +10,6 @@ import type { TransferItem } from '@shared/types/transfer';
 
 function HookHarness() {
   useTransferEvents();
-  useEffect(() => undefined, []);
   return null;
 }
 
@@ -112,5 +110,35 @@ describe('useTransferEvents', () => {
       error: 'boom',
     });
     expect(localRefresh).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the local pane when a download completes successfully', () => {
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
+
+    const localRefresh = vi.fn();
+    const remoteRefresh = vi.fn();
+    useLocalPanelStore.setState({ refresh: localRefresh });
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.setState({
+      transfers: [transfer({ id: 'download-1', direction: 'download' })],
+    });
+
+    render(<HookHarness />);
+
+    handlers.get('transfer:progress')?.({
+      transferId: 'download-1',
+      bytesTransferred: 100,
+      totalBytes: 100,
+      speed: 10,
+    });
+    handlers.get('transfer:complete')?.({ transferId: 'download-1', success: true });
+
+    expect(useTransferStore.getState().transfers[0].status).toBe('completed');
+    expect(localRefresh).toHaveBeenCalledTimes(1);
+    expect(remoteRefresh).not.toHaveBeenCalled();
   });
 });

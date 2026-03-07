@@ -138,4 +138,15 @@ describe('SftpService', () => {
     expect(consoleError).toHaveBeenCalledWith('Failed to delete /remote/missing:', expect.any(Error));
     consoleError.mockRestore();
   });
+
+  it('disconnects and removes the stored client', async () => {
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+
+    await service.disconnect('conn-1');
+
+    expect(mockClient.end).toHaveBeenCalled();
+    expect(() => service.getClient('conn-1')).toThrow('Not connected');
+  });
 });

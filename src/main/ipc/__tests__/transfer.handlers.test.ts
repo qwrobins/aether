@@ -3,13 +3,13 @@ import { IpcChannels } from '@shared/constants/channels';
 import type { TransferItem, TransferRequest } from '@shared/types/transfer';
 
 const transferItems = new Map<string, TransferItem>();
-const enqueue = vi.fn(async (request: TransferRequest) => {
+const enqueue = vi.fn(async (request: TransferRequest, _s3Client?: unknown, _sftpClient?: unknown, size?: number) => {
   const id = `transfer-${enqueue.mock.calls.length}`;
   transferItems.set(id, {
     id,
     fileName: request.sourcePath.split('/').pop() ?? request.sourcePath,
     ...request,
-    size: 0,
+    size: size ?? 0,
     bytesTransferred: 0,
     status: 'queued',
     speed: 0,

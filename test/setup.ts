@@ -8,7 +8,13 @@ type TestApi = {
 
 if (!globalThis.crypto) {
   Object.defineProperty(globalThis, 'crypto', {
-    value: undefined,
+    value: {
+      randomUUID: vi.fn(() => 'test-uuid'),
+      getRandomValues: vi.fn((array: Uint8Array) => {
+        array.fill(1);
+        return array;
+      }),
+    },
     writable: true,
     configurable: true,
   });
