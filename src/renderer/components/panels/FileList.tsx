@@ -1,5 +1,4 @@
 import { ChevronUp, ChevronDown, FolderOpen, FolderPlus } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,8 +13,6 @@ import {
   TableRow,
   TableHead,
 } from '@/components/ui/table';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FileItem } from './FileItem';
 import type { PanelType } from './FileItem';

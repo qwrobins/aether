@@ -5,6 +5,7 @@ import { stat, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import type { Progress } from '@aws-sdk/lib-storage';
 import type {
   TransferItem,
   TransferRequest,
@@ -12,6 +13,32 @@ import type {
   TransferResult,
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
+
+type SftpTransferClient = {
+  mkdir: (path: string, recursive: boolean) => Promise<void>;
+  fastPut: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  stat: (path: string) => Promise<{ size: number }>;
+  fastGet: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+};
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Transfer failed';
+}
+
+function getRequiredBucket(item: TransferItem): string {
+  if (!item.bucket) {
+    throw new Error('Bucket is required for S3 transfers');
+  }
+  return item.bucket;
+}
 
 export class TransferService {
   private queue: PQueue;
@@ -38,7 +65,7 @@ export class TransferService {
   async enqueue(
     request: TransferRequest,
     s3Client?: S3Client,
-    sftpClient?: any,
+    sftpClient?: SftpTransferClient,
     size?: number,
   ): Promise<string> {
     const id = crypto.randomUUID();
@@ -74,7 +101,7 @@ export class TransferService {
   private async executeTransfer(
     item: TransferItem,
     s3Client?: S3Client,
-    sftpClient?: any,
+    sftpClient?: SftpTransferClient,
     signal?: AbortSignal,
   ): Promise<void> {
     item.status = 'active';
@@ -85,8 +112,10 @@ export class TransferService {
 
     try {
       if (item.connectionType === 's3') {
-        await this.executeS3Transfer(item, s3Client!, signal, startTime);
+        if (!s3Client) throw new Error('S3 client is not connected');
+        await this.executeS3Transfer(item, s3Client, signal, startTime);
       } else if (item.connectionType === 'sftp') {
+        if (!sftpClient) throw new Error('SFTP client is not connected');
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
       }
 
@@ -94,13 +123,13 @@ export class TransferService {
       item.completedAt = new Date().toISOString();
       item.bytesTransferred = item.size;
       this.emitComplete(item.id, true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (signal?.aborted) {
         item.status = 'cancelled';
         this.emitComplete(item.id, false, 'Cancelled');
       } else {
         item.status = 'failed';
-        item.error = error.message || 'Transfer failed';
+        item.error = getErrorMessage(error);
         this.emitError(item.id, item.error);
 
         if (item.retryCount < 3) {
@@ -113,7 +142,7 @@ export class TransferService {
               .add(async () => {
                 await this.executeTransfer(item, s3Client, sftpClient, signal);
               })
-              .catch(() => {});
+              .catch(() => undefined);
           }, delay);
         }
       }
@@ -135,14 +164,14 @@ export class TransferService {
       const upload = new Upload({
         client,
         params: {
-          Bucket: item.bucket!,
+          Bucket: getRequiredBucket(item),
           Key: item.destinationPath,
           Body: fileStream,
         },
         abortController: uploadController,
       });
 
-      upload.on('httpUploadProgress', (progress) => {
+      upload.on('httpUploadProgress', (progress: Progress) => {
         if (progress.loaded) {
           item.bytesTransferred = progress.loaded;
           const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
@@ -164,18 +193,18 @@ export class TransferService {
 
       const response = await client.send(
         new GetObjectCommand({
-          Bucket: item.bucket!,
+          Bucket: getRequiredBucket(item),
           Key: item.sourcePath,
         }),
         { abortSignal: signal },
       );
 
       item.size = response.ContentLength || 0;
-      const body = response.Body as NodeJS.ReadableStream;
+      const body = response.Body as AsyncIterable<Buffer>;
       const writeStream = createWriteStream(item.destinationPath);
 
       let downloaded = 0;
-      for await (const chunk of body as any) {
+      for await (const chunk of body) {
         if (signal?.aborted) throw new Error('Aborted');
         writeStream.write(chunk);
         downloaded += chunk.length;
@@ -195,7 +224,7 @@ export class TransferService {
 
   private async executeSftpTransfer(
     item: TransferItem,
-    client: any,
+    client: SftpTransferClient,
     signal?: AbortSignal,
     startTime?: number,
   ): Promise<void> {

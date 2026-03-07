@@ -2,5 +2,11 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-const root = createRoot(document.getElementById('root')!);
+const rootElement = document.getElementById('root');
+
+if (!rootElement) {
+  throw new Error('[Aether] Root element not found');
+}
+
+const root = createRoot(rootElement);
 root.render(<App />);

@@ -1,12 +1,13 @@
 import {
   S3Client,
+  type S3ClientConfig,
   ListBucketsCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
-import { IAMClient, ListRolesCommand } from '@aws-sdk/client-iam';
+import { IAMClient, type IAMClientConfig, ListRolesCommand } from '@aws-sdk/client-iam';
 import { fromTemporaryCredentials, fromIni } from '@aws-sdk/credential-providers';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -19,7 +20,7 @@ export class S3Service {
   private regions: Map<string, string> = new Map();
 
   connect(connectionId: string, profile: S3ConnectionProfile): void {
-    const baseConfig: Record<string, unknown> = {
+    const baseConfig: S3ClientConfig = {
       region: profile.region,
       followRegionRedirects: true,
     };
@@ -42,7 +43,7 @@ export class S3Service {
         throw new Error('Role ARN is required for IAM role auth');
       }
       // Use STS AssumeRole with optional source credentials
-      const params: Record<string, unknown> = {
+      const params: Parameters<typeof fromTemporaryCredentials>[0] = {
         clientConfig: { region: profile.region },
         params: {
           RoleArn: profile.roleArn,
@@ -56,7 +57,7 @@ export class S3Service {
           secretAccessKey: profile.sourceSecretAccessKey,
         };
       }
-      baseConfig.credentials = fromTemporaryCredentials(params as any);
+      baseConfig.credentials = fromTemporaryCredentials(params);
     } else if (profile.authMethod === 'profile') {
       if (!profile.awsProfile) {
         throw new Error('AWS profile name is required');
@@ -65,7 +66,7 @@ export class S3Service {
     }
     // 'default-chain' — no credentials specified, SDK uses default provider chain
 
-    const client = new S3Client(baseConfig as any);
+    const client = new S3Client(baseConfig);
     this.clients.set(connectionId, client);
     this.regions.set(connectionId, profile.region);
   }
@@ -116,12 +117,12 @@ export class S3Service {
     accessKeyId?: string,
     secretAccessKey?: string,
   ): Promise<Array<{ arn: string; name: string }>> {
-    const config: Record<string, unknown> = { region };
+    const config: IAMClientConfig = { region };
     if (accessKeyId && secretAccessKey) {
       config.credentials = { accessKeyId, secretAccessKey };
     }
 
-    const iam = new IAMClient(config as any);
+    const iam = new IAMClient(config);
     const roles: Array<{ arn: string; name: string }> = [];
     let marker: string | undefined;
 
@@ -147,8 +148,8 @@ export class S3Service {
     // Return all buckets sorted alphabetically — cross-region access is
     // handled transparently by followRegionRedirects on the S3 client
     return (result.Buckets || [])
-      .map((b) => b.Name!)
-      .filter(Boolean)
+      .map((b) => b.Name)
+      .filter((name): name is string => Boolean(name))
       .sort((a, b) => a.localeCompare(b));
   }
 
@@ -169,7 +170,8 @@ export class S3Service {
     const entries: FileEntry[] = [];
 
     for (const cp of result.CommonPrefixes || []) {
-      const fullPrefix = cp.Prefix!;
+      const fullPrefix = cp.Prefix;
+      if (!fullPrefix) continue;
       const name = fullPrefix.slice(prefix.length).replace(/\/$/, '');
       if (name) {
         entries.push({
@@ -183,7 +185,8 @@ export class S3Service {
     }
 
     for (const obj of result.Contents || []) {
-      const key = obj.Key!;
+      const key = obj.Key;
+      if (!key) continue;
       if (key === prefix) continue;
       const name = key.slice(prefix.length);
       if (!name || name.endsWith('/')) continue;
@@ -284,9 +287,9 @@ export class S3Service {
         );
 
         if (response.Errors && response.Errors.length > 0) {
-          const failedKeys = response.Errors
-            .filter((e) => e.Key)
-            .map((e) => e.Key!);
+            const failedKeys = response.Errors
+              .filter((e) => e.Key)
+              .map((e) => e.Key as string);
           const errorDetails = response.Errors
             .map((e) => `${e.Key}: ${e.Code} - ${e.Message}`)
             .join('; ');

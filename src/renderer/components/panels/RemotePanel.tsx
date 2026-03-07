@@ -218,9 +218,10 @@ export function RemotePanel() {
       if (!confirm(`Delete ${paths.length} remote item(s)?`)) return;
 
       if (activeProfile.type === 's3') {
+        if (!currentBucket) return;
         Promise.all(
           paths.map((p) =>
-            window.api.invoke('s3:delete-object', activeConnectionId, currentBucket!, p)
+            window.api.invoke('s3:delete-object', activeConnectionId, currentBucket, p)
           )
         )
           .then(() => refresh())
@@ -325,17 +326,11 @@ export function RemotePanel() {
     [activeConnectionId, activeProfile, currentBucket]
   );
 
-  // Noop handlers for states without file browsing
-  const noopDelete = useCallback(() => {}, []);
-  const noopRename = useCallback(() => {}, []);
-  const noopNewFolder = useCallback(() => {}, []);
-  const noopTransfer = useCallback(() => {}, []);
-
   // State 1: No connection
   if (!activeConnectionId) {
     return (
       <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
-        <PanelHeader label="Remote" path="" isActive={false} onNavigate={() => {}} onRefresh={() => {}} />
+        <PanelHeader label="Remote" path="" isActive={false} onNavigate={() => void 0} onRefresh={() => void 0} />
         {connectionStatus === 'connecting' ? (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-3">
@@ -411,7 +406,7 @@ export function RemotePanel() {
           label={`S3: ${activeProfile.name}`}
           path=""
           isActive={true}
-          onNavigate={() => {}}
+          onNavigate={() => void 0}
           onRefresh={loadBuckets}
         />
         <BucketList />

@@ -1,9 +1,9 @@
-import React from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+class ErrorBoundary extends Component<
+  { children: ReactNode },
   { error: Error | null }
 > {
   state = { error: null as Error | null };
@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component<
     return { error };
   }
 
-  componentDidCatch(error: Error, info: React.ErrorInfo) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[Aether] React Error:', error.message);
     console.error('[Aether] Component Stack:', info.componentStack);
   }

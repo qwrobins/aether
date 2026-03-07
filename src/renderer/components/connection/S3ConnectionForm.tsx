@@ -60,8 +60,8 @@ export function S3ConnectionForm({ formData, onChange }: S3ConnectionFormProps) 
     try {
       const result = await window.api.invoke('s3:list-profiles');
       setAwsProfiles(result);
-    } catch (err: any) {
-      setProfilesError(err?.message || String(err));
+    } catch (err: unknown) {
+      setProfilesError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingProfiles(false);
     }

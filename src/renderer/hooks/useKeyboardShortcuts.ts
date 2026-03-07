@@ -33,9 +33,10 @@ export function useKeyboardShortcuts() {
           const paths = Array.from(remoteStore.selectedFiles);
           if (confirm(`Delete ${paths.length} remote item(s)?`)) {
             if (remoteStore.activeProfile?.type === 's3') {
+              if (!remoteStore.activeConnectionId || !remoteStore.currentBucket) return;
               Promise.all(
                 paths.map((p) =>
-                  window.api.invoke('s3:delete-object', remoteStore.activeConnectionId!, remoteStore.currentBucket!, p)
+                  window.api.invoke('s3:delete-object', remoteStore.activeConnectionId, remoteStore.currentBucket, p)
                 )
               )
                 .then(() => remoteStore.refresh())
@@ -44,8 +45,9 @@ export function useKeyboardShortcuts() {
                   toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
                 });
             } else if (remoteStore.activeProfile?.type === 'sftp') {
+              if (!remoteStore.activeConnectionId) return;
               window.api
-                .invoke('sftp:delete', remoteStore.activeConnectionId!, paths)
+                .invoke('sftp:delete', remoteStore.activeConnectionId, paths)
                 .then(() => remoteStore.refresh())
                 .catch((err) => {
                   console.error('[Aether] SFTP delete failed:', err);
