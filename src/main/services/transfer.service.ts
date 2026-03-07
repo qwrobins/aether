@@ -5,6 +5,7 @@ import { stat, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import type { Progress } from '@aws-sdk/lib-storage';
 import type {
   TransferItem,
   TransferRequest,
@@ -12,6 +13,39 @@ import type {
   TransferResult,
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
+
+type SftpTransferClient = {
+  mkdir: (path: string, recursive: boolean) => Promise<void>;
+  fastPut: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  stat: (path: string) => Promise<{ size: number }>;
+  fastGet: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+};
+
+class NonRetryableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NonRetryableError';
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Transfer failed';
+}
+
+function getRequiredBucket(item: TransferItem): string {
+  if (!item.bucket) {
+    throw new NonRetryableError('Bucket is required for S3 transfers');
+  }
+  return item.bucket;
+}
 
 export class TransferService {
   private queue: PQueue;
@@ -38,7 +72,7 @@ export class TransferService {
   async enqueue(
     request: TransferRequest,
     s3Client?: S3Client,
-    sftpClient?: any,
+    sftpClient?: SftpTransferClient,
     size?: number,
   ): Promise<string> {
     const id = crypto.randomUUID();
@@ -74,9 +108,15 @@ export class TransferService {
   private async executeTransfer(
     item: TransferItem,
     s3Client?: S3Client,
-    sftpClient?: any,
+    sftpClient?: SftpTransferClient,
     signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) {
+      item.status = 'cancelled';
+      this.emitComplete(item.id, false, 'Cancelled');
+      return;
+    }
+
     item.status = 'active';
     item.startedAt = new Date().toISOString();
     this.emitProgress(item.id, 0, item.size, 0);
@@ -85,35 +125,49 @@ export class TransferService {
 
     try {
       if (item.connectionType === 's3') {
-        await this.executeS3Transfer(item, s3Client!, signal, startTime);
+        if (!s3Client) throw new NonRetryableError('S3 client is not connected');
+        await this.executeS3Transfer(item, s3Client, signal, startTime);
       } else if (item.connectionType === 'sftp') {
+        if (!sftpClient) throw new NonRetryableError('SFTP client is not connected');
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
+      }
+
+      if (signal?.aborted) {
+        item.status = 'cancelled';
+        this.emitComplete(item.id, false, 'Cancelled');
+        return;
       }
 
       item.status = 'completed';
       item.completedAt = new Date().toISOString();
       item.bytesTransferred = item.size;
       this.emitComplete(item.id, true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (signal?.aborted) {
         item.status = 'cancelled';
         this.emitComplete(item.id, false, 'Cancelled');
       } else {
         item.status = 'failed';
-        item.error = error.message || 'Transfer failed';
+        item.error = getErrorMessage(error);
         this.emitError(item.id, item.error);
 
-        if (item.retryCount < 3) {
+        if (!(error instanceof NonRetryableError) && item.retryCount < 3) {
           item.retryCount++;
           item.status = 'queued';
           item.bytesTransferred = 0;
           const delay = Math.pow(2, item.retryCount) * 1000;
           setTimeout(() => {
+            if (signal?.aborted) {
+              item.status = 'cancelled';
+              this.emitComplete(item.id, false, 'Cancelled');
+              return;
+            }
+
             this.queue
               .add(async () => {
                 await this.executeTransfer(item, s3Client, sftpClient, signal);
               })
-              .catch(() => {});
+              .catch(() => undefined);
           }, delay);
         }
       }
@@ -135,14 +189,14 @@ export class TransferService {
       const upload = new Upload({
         client,
         params: {
-          Bucket: item.bucket!,
+          Bucket: getRequiredBucket(item),
           Key: item.destinationPath,
           Body: fileStream,
         },
         abortController: uploadController,
       });
 
-      upload.on('httpUploadProgress', (progress) => {
+      upload.on('httpUploadProgress', (progress: Progress) => {
         if (progress.loaded) {
           item.bytesTransferred = progress.loaded;
           const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
@@ -156,6 +210,7 @@ export class TransferService {
       }
 
       await upload.done();
+      if (signal?.aborted) throw new Error('Aborted');
     } else {
       const destDir = path.dirname(item.destinationPath);
       if (destDir && destDir !== '.' && destDir !== '/') {
@@ -164,18 +219,21 @@ export class TransferService {
 
       const response = await client.send(
         new GetObjectCommand({
-          Bucket: item.bucket!,
+          Bucket: getRequiredBucket(item),
           Key: item.sourcePath,
         }),
         { abortSignal: signal },
       );
 
       item.size = response.ContentLength || 0;
-      const body = response.Body as NodeJS.ReadableStream;
+      const body = response.Body;
+      if (!body) {
+        throw new NonRetryableError('S3 response body is empty');
+      }
       const writeStream = createWriteStream(item.destinationPath);
 
       let downloaded = 0;
-      for await (const chunk of body as any) {
+      for await (const chunk of body as AsyncIterable<Buffer>) {
         if (signal?.aborted) throw new Error('Aborted');
         writeStream.write(chunk);
         downloaded += chunk.length;
@@ -195,7 +253,7 @@ export class TransferService {
 
   private async executeSftpTransfer(
     item: TransferItem,
-    client: any,
+    client: SftpTransferClient,
     signal?: AbortSignal,
     startTime?: number,
   ): Promise<void> {
@@ -223,6 +281,7 @@ export class TransferService {
           this.emitProgress(item.id, totalTransferred, total, item.speed);
         },
       });
+      if (signal?.aborted) throw new Error('Aborted');
     } else {
       const destDir = path.dirname(item.destinationPath);
       if (destDir && destDir !== '.' && destDir !== '/') {
@@ -242,6 +301,7 @@ export class TransferService {
           this.emitProgress(item.id, totalTransferred, total, item.speed);
         },
       });
+      if (signal?.aborted) throw new Error('Aborted');
     }
   }
 

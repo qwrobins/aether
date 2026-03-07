@@ -1,7 +1,7 @@
 {
   "name": "aether",
   "productName": "Aether",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Modern file transfer app for AWS S3 and SFTP",
   "main": ".vite/build/index.js",
   "private": true,
@@ -11,7 +11,10 @@
     "make": "electron-forge make",
     "install:appimage": "bash ./scripts/install-appimage.sh",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": {
@@ -31,6 +34,8 @@
     "@electron/fuses": "^1.8.0",
     "@reforged/maker-appimage": "^5.2.0",
     "@tailwindcss/vite": "^4.1.18",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/node": "^25.2.2",
     "@types/react": "^19.2.13",
@@ -39,12 +44,17 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/coverage-v8": "^4.0.18",
     "electron": "40.2.1",
     "eslint": "^8.57.1",
+    "eslint-import-resolver-typescript": "^3.6.1",
     "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "jsdom": "^28.1.0",
     "tailwindcss": "^4.1.18",
     "typescript": "~4.5.4",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "dependencies": {
     "@aws-sdk/client-iam": "^3.986.0",

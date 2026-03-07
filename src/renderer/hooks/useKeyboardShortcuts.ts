@@ -31,11 +31,16 @@ export function useKeyboardShortcuts() {
 
         if (useRemote && remoteCount > 0) {
           const paths = Array.from(remoteStore.selectedFiles);
-          if (confirm(`Delete ${paths.length} remote item(s)?`)) {
-            if (remoteStore.activeProfile?.type === 's3') {
+          if (remoteStore.activeProfile?.type === 's3') {
+            if (!remoteStore.activeConnectionId || !remoteStore.currentBucket) {
+              toast.error('No active S3 connection or bucket selected');
+              return;
+            }
+
+            if (confirm(`Delete ${paths.length} remote item(s)?`)) {
               Promise.all(
                 paths.map((p) =>
-                  window.api.invoke('s3:delete-object', remoteStore.activeConnectionId!, remoteStore.currentBucket!, p)
+                  window.api.invoke('s3:delete-object', remoteStore.activeConnectionId, remoteStore.currentBucket, p)
                 )
               )
                 .then(() => remoteStore.refresh())
@@ -43,9 +48,16 @@ export function useKeyboardShortcuts() {
                   console.error('[Aether] S3 delete failed:', err);
                   toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
                 });
-            } else if (remoteStore.activeProfile?.type === 'sftp') {
+            }
+          } else if (remoteStore.activeProfile?.type === 'sftp') {
+            if (!remoteStore.activeConnectionId) {
+              toast.error('No active SFTP connection');
+              return;
+            }
+
+            if (confirm(`Delete ${paths.length} remote item(s)?`)) {
               window.api
-                .invoke('sftp:delete', remoteStore.activeConnectionId!, paths)
+                .invoke('sftp:delete', remoteStore.activeConnectionId, paths)
                 .then(() => remoteStore.refresh())
                 .catch((err) => {
                   console.error('[Aether] SFTP delete failed:', err);

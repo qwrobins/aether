@@ -90,3 +90,7 @@ typings/
 
 # Electron-Forge
 out/
+
+# MCP config (may contain local tool paths)
+.mcp.json
+opencode.jsonc

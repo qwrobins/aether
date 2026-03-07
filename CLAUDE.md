@@ -67,8 +67,39 @@ Aether is an Electron file transfer application supporting AWS S3 and SFTP with 
 
 ## Commands
 - `npm start` — Launch dev mode with Vite HMR
+- `npm run lint` — Run ESLint across TypeScript and TSX files
 - `npm run package` — Package the app
 - `npm run make` — Build distributable installers
+
+## Workflow Expectations
+
+### Before Changing Code
+- Read the relevant renderer/main/shared files before editing so IPC, types, and state stay aligned
+- Prefer small, targeted changes that preserve the current architecture and visual language
+- If a change spans main/preload/renderer, update shared IPC types and channels first
+
+### Validation and Testing
+- At minimum, run `npm run lint` after non-trivial code changes
+- For changes affecting startup, packaging, preload, or Electron wiring, also run `npm start` if the environment allows it
+- For packaging/distribution changes, run `npm run package`; run `npm run make` only when installer output matters
+- If you cannot run a relevant verification step, state that clearly in the handoff
+
+### Error Handling and Logging
+- Fail IPC handlers with clear, actionable error messages; do not swallow errors unless the failure is explicitly non-fatal
+- Validate inputs at IPC boundaries before touching filesystem, network, or credential code
+- Log concise, prefixed diagnostics in main-process code (for example `[Aether] ...`) when they help debug startup, IPC, transfers, or connection issues
+- Surface user-relevant failures to the renderer in a form that can be shown in UI state or toast notifications
+
+### Input Validation
+- Treat all renderer-provided IPC arguments as untrusted input
+- Validate required strings, IDs, paths, bucket names, and operation-specific options in the main process
+- Reject invalid payloads early with descriptive errors rather than coercing questionable input
+- Keep validation logic close to each IPC handler unless multiple handlers share the same rules
+
+### Release and Packaging Notes
+- Keep dev and packaged behavior aligned: asset paths, preload paths, and window creation should work in both modes
+- When changing Electron packaging behavior, verify Linux-oriented flows first unless the task is explicitly platform-specific
+- Never commit secrets, live credentials, or environment-specific machine paths
 
 ## UI Design Rules
 
@@ -138,7 +169,7 @@ Deep warm dark base with indigo-violet accent that shifts to amber-gold during a
 See `PLAN.md` for the full implementation plan, UI design spec, and phase breakdown.
 
 ## Agent Teams
-When implementing, **always use agent teams** to parallelize work across independent files. Use `/using-git-worktrees` to create isolated worktrees per phase.
+When implementing larger features, use agent teams to parallelize work across independent files. Use `/using-git-worktrees` to create isolated worktrees per phase when the task is broad enough to benefit from isolation.
 
 Typical team structure:
 - **types-agent**: Shared types + constants (general-purpose agent)
@@ -146,3 +177,5 @@ Typical team structure:
 - **renderer-agent**: React components + stores + hooks (general-purpose agent)
 
 For each phase, create a team with tasks assigned to appropriate agents. Use TaskCreate/TaskUpdate to track progress. Spawn agents in parallel whenever their work is independent.
+
+For small, localized changes, a single agent is fine; avoid unnecessary coordination overhead when one focused edit is faster and safer.

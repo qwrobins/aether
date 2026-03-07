@@ -55,7 +55,7 @@ export class ConnectionService {
     writeStore(store);
   }
 
-  async test(_profile: ConnectionProfile): Promise<boolean> {
+  async test(): Promise<boolean> {
     // Actual S3/SFTP connectivity testing comes in Phase 4/5
     return true;
   }

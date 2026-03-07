@@ -11,17 +11,31 @@ import {
 interface PathBreadcrumbProps {
   path: string;
   onNavigate: (path: string) => void;
+  mode?: 'filesystem' | 's3-prefix';
 }
 
-export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
+export function PathBreadcrumb({
+  path,
+  onNavigate,
+  mode = 'filesystem',
+}: PathBreadcrumbProps) {
   const normalized = path.replace(/\\/g, '/');
   const segments = normalized.split('/').filter(Boolean);
+  const isS3Prefix = mode === 's3-prefix';
 
   // On Unix, the root is "/"; on Windows it might be "C:/"
   const isUnix = normalized.startsWith('/');
-  const rootLabel = isUnix ? '/' : segments[0] ? `${segments[0]}/` : '/';
-  const rootPath = isUnix ? '/' : `${segments[0]}/`;
-  const displaySegments = isUnix ? segments : segments.slice(1);
+  let rootLabel = '/';
+  let rootPath = '/';
+  let displaySegments = segments;
+
+  if (isS3Prefix) {
+    rootPath = '';
+  } else if (!isUnix) {
+    rootLabel = segments[0] ? `${segments[0]}/` : '/';
+    rootPath = segments[0] ? `${segments[0]}/` : '/';
+    displaySegments = segments.slice(1);
+  }
 
   const MAX_VISIBLE = 4;
   const shouldCollapse = displaySegments.length > MAX_VISIBLE;
@@ -30,9 +44,9 @@ export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
     : displaySegments;
 
   function buildPath(segmentIndex: number): string {
-    const allSegments = isUnix ? segments : segments;
-    const upTo = isUnix ? segmentIndex + 1 : segmentIndex + 1;
-    const joined = allSegments.slice(0, upTo).join('/');
+    const upTo = segmentIndex + 1;
+    const joined = segments.slice(0, upTo).join('/');
+    if (isS3Prefix) return joined ? `${joined}/` : '';
     return isUnix ? `/${joined}` : joined;
   }
 
@@ -55,7 +69,7 @@ export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
               <BreadcrumbLink
                 className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
                 onClick={() => {
-                  const idx = isUnix ? 0 : 1;
+                  const idx = (isS3Prefix || isUnix) ? 0 : 1;
                   onNavigate(buildPath(idx));
                 }}
               >
@@ -74,7 +88,7 @@ export function PathBreadcrumb({ path, onNavigate }: PathBreadcrumbProps) {
             const realIndex = shouldCollapse
               ? displaySegments.length - 2 + i
               : i;
-            const fullIndex = isUnix ? realIndex : realIndex + 1;
+            const fullIndex = (isS3Prefix || isUnix) ? realIndex : realIndex + 1;
             const isLast = realIndex === displaySegments.length - 1;
 
             return (
