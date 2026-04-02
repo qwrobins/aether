@@ -77,7 +77,7 @@ jobs:
             platform: linux
             label: Linux
             artifact_glob: '*.AppImage'
-          - runner: macos-13
+          - runner: macos-14
             platform: macos
             label: macOS
             artifact_glob: '*.zip'
