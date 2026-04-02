@@ -163,13 +163,12 @@ describe('useTransferEvents', () => {
       transferId: 'upload-1',
       status: 'cancelled',
       success: false,
-      error: 'Cancelled',
     });
 
     expect(useTransferStore.getState().transfers[0]).toMatchObject({
       status: 'cancelled',
-      error: 'Cancelled',
     });
+    expect(useTransferStore.getState().transfers[0].error).toBeUndefined();
     expect(localRefresh).not.toHaveBeenCalled();
     expect(remoteRefresh).not.toHaveBeenCalled();
   });

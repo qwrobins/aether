@@ -30,6 +30,18 @@ export function registerTransferHandlers(
         sftpClient = sftpService.getClient(request.connectionId);
       }
 
+      const enqueueTransfer = async (
+        transferRequest: TransferRequest,
+        size?: number,
+      ): Promise<string> => {
+        const transferSftpClient =
+          transferRequest.connectionType === 'sftp'
+            ? await sftpService.createTransferClient(transferRequest.connectionId)
+            : sftpClient;
+
+        return transferService.enqueue(transferRequest, s3Client, transferSftpClient, size);
+      };
+
       // Directory expansion: recursively list files and queue each
       if (request.direction === 'upload') {
         try {
@@ -42,7 +54,7 @@ export function registerTransferHandlers(
             for (const { path: filePath, relativePath } of files) {
               const subDest = `${destBase}/${relativePath}`;
               const subRequest: TransferRequest = { ...request, sourcePath: filePath, destinationPath: subDest };
-              const id = await transferService.enqueue(subRequest, s3Client, sftpClient);
+              const id = await enqueueTransfer(subRequest);
               const transfer = transferService.getTransfer(id);
               if (!transfer) {
                 console.warn(`[Aether] Transfer ${id} not found after enqueue, skipping`);
@@ -68,7 +80,7 @@ export function registerTransferHandlers(
                 const relativePath = key.slice(prefix.length);
                 const subDest = `${destBase}/${relativePath}`;
                 const subRequest: TransferRequest = { ...request, sourcePath: key, destinationPath: subDest };
-                const id = await transferService.enqueue(subRequest, s3Client, sftpClient, size);
+                const id = await enqueueTransfer(subRequest, size);
                 const transfer = transferService.getTransfer(id);
                 if (!transfer) {
                   console.warn(`[Aether] Transfer ${id} not found after enqueue, skipping`);
@@ -90,7 +102,7 @@ export function registerTransferHandlers(
               for (const { path: remotePath, relativePath, size } of files) {
                 const subDest = `${destBase}/${relativePath}`;
                 const subRequest: TransferRequest = { ...request, sourcePath: remotePath, destinationPath: subDest };
-                const id = await transferService.enqueue(subRequest, s3Client, sftpClient, size);
+                const id = await enqueueTransfer(subRequest, size);
                 const transfer = transferService.getTransfer(id);
                 if (!transfer) {
                   console.warn(`[Aether] Transfer ${id} not found after enqueue, skipping`);
@@ -108,7 +120,7 @@ export function registerTransferHandlers(
       }
 
       // Single file
-      const id = await transferService.enqueue(request, s3Client, sftpClient);
+      const id = await enqueueTransfer(request);
       console.log(`[Aether] Transfer queued: ${id}`);
       return id;
     },

@@ -65,14 +65,13 @@ describe('useTransferStore', () => {
       transferId: 'one',
       status: 'cancelled',
       success: false,
-      error: 'Cancelled',
     });
 
     expect(useTransferStore.getState().transfers[0]).toMatchObject({
       status: 'cancelled',
-      error: 'Cancelled',
       speed: 0,
     });
+    expect(useTransferStore.getState().transfers[0].error).toBeUndefined();
   });
 
   it('reports counts and remaining bytes from active and queued transfers', () => {

@@ -12,10 +12,15 @@ function expandTilde(filePath: string): string {
 
 export class SftpService {
   private clients: Map<string, SftpClient> = new Map();
+  private profiles: Map<string, SftpConnectionProfile> = new Map();
 
-  async connect(connectionId: string, profile: SftpConnectionProfile): Promise<void> {
+  private async createClient(profile: SftpConnectionProfile): Promise<SftpClient> {
     const client = new SftpClient();
+    await client.connect(await this.buildConfig(profile));
+    return client;
+  }
 
+  private async buildConfig(profile: SftpConnectionProfile): Promise<SftpClient.ConnectOptions> {
     const config: SftpClient.ConnectOptions = {
       host: profile.host,
       port: profile.port || 22,
@@ -32,8 +37,13 @@ export class SftpService {
       }
     }
 
-    await client.connect(config);
+    return config;
+  }
+
+  async connect(connectionId: string, profile: SftpConnectionProfile): Promise<void> {
+    const client = await this.createClient(profile);
     this.clients.set(connectionId, client);
+    this.profiles.set(connectionId, profile);
   }
 
   async disconnect(connectionId: string): Promise<void> {
@@ -42,12 +52,36 @@ export class SftpService {
       await client.end();
       this.clients.delete(connectionId);
     }
+    this.profiles.delete(connectionId);
   }
 
   getClient(connectionId: string): SftpClient {
     const client = this.clients.get(connectionId);
     if (!client) throw new Error('Not connected');
     return client;
+  }
+
+  async createTransferClient(connectionId: string) {
+    const profile = this.profiles.get(connectionId);
+    if (!profile) throw new Error('Not connected');
+
+    const client = await this.createClient(profile);
+    let closed = false;
+
+    const close = async () => {
+      if (closed) return;
+      closed = true;
+      await client.end();
+    };
+
+    return {
+      mkdir: client.mkdir.bind(client),
+      fastPut: client.fastPut.bind(client),
+      stat: client.stat.bind(client),
+      fastGet: client.fastGet.bind(client),
+      abort: close,
+      disconnect: close,
+    };
   }
 
   async list(connectionId: string, remotePath: string): Promise<DirectoryListing> {

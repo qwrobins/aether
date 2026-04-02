@@ -29,6 +29,7 @@ const listFilesRecursive = vi.fn();
 const listObjectKeysRecursive = vi.fn();
 const getS3Client = vi.fn(() => ({ kind: 's3-client' }));
 const getSftpClient = vi.fn(() => ({ kind: 'sftp-client', stat: vi.fn() }));
+const createTransferSftpClient = vi.fn(async () => ({ kind: 'transfer-sftp-client' }));
 const listSftpFilesRecursive = vi.fn();
 
 vi.mock('../../services/transfer.service', () => ({
@@ -59,6 +60,7 @@ vi.mock('../s3.handlers', () => ({
 vi.mock('../sftp.handlers', () => ({
   sftpService: {
     getClient: getSftpClient,
+    createTransferClient: createTransferSftpClient,
     listFilesRecursive: listSftpFilesRecursive,
   },
 }));
@@ -89,6 +91,7 @@ describe('registerTransferHandlers', () => {
     listObjectKeysRecursive.mockReset();
     getS3Client.mockClear();
     getSftpClient.mockClear();
+    createTransferSftpClient.mockClear();
     listSftpFilesRecursive.mockReset();
   });
 
@@ -169,6 +172,7 @@ describe('registerTransferHandlers', () => {
 
     expect(client.stat).toHaveBeenCalledWith('/remote/root');
     expect(listSftpFilesRecursive).toHaveBeenCalledWith('conn-1', '/remote/root');
+    expect(createTransferSftpClient).toHaveBeenCalledTimes(2);
     expect(enqueue.mock.calls[0][0]).toMatchObject({
       sourcePath: '/remote/root/file.txt',
       destinationPath: '/local/root/file.txt',

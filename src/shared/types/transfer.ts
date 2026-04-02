@@ -17,6 +17,7 @@ export interface TransferItem {
   fileName: string;
   sourcePath: string;
   destinationPath: string;
+  tempPath?: string;
   direction: TransferDirection;
   connectionId: string;
   connectionType: ConnectionType;
@@ -38,9 +39,20 @@ export interface TransferProgress {
   speed: number;
 }
 
-export interface TransferResult {
-  transferId: string;
-  status: Extract<TransferStatus, 'completed' | 'failed' | 'cancelled'>;
-  success: boolean;
-  error?: string;
-}
+export type TransferResult =
+  | {
+      transferId: string;
+      status: 'completed';
+      success: true;
+    }
+  | {
+      transferId: string;
+      status: 'failed';
+      success: false;
+      error: string;
+    }
+  | {
+      transferId: string;
+      status: 'cancelled';
+      success: false;
+    };

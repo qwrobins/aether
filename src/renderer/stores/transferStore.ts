@@ -51,7 +51,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
           ? {
               ...t,
               status: result.status,
-              error: result.error,
+              error: 'error' in result ? result.error : undefined,
               completedAt: new Date().toISOString(),
               speed: 0,
             }
