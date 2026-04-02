@@ -110,17 +110,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          shopt -s globstar nullglob
-          files=(out/make/**/${{ matrix.artifact_glob }})
 
-          if [[ ${#files[@]} -eq 0 ]]; then
+          count=0
+          while IFS= read -r -d '' file; do
+            cp "$file" release-assets/
+            count=$((count + 1))
+          done < <(find out/make -name '${{ matrix.artifact_glob }}' -print0)
+
+          if [[ $count -eq 0 ]]; then
             echo "No release assets matched ${{ matrix.artifact_glob }}" >&2
             exit 1
           fi
-
-          for file in "${files[@]}"; do
-            cp "${file}" release-assets/
-          done
 
           ls -lah release-assets
 
