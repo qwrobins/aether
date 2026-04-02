@@ -3,6 +3,7 @@ import type { TransferItem, TransferRequest } from '@shared/types/transfer';
 
 const statMock = vi.fn();
 const mkdirMock = vi.fn();
+const unlinkMock = vi.fn();
 const createReadStreamMock = vi.fn();
 const createWriteStreamMock = vi.fn();
 const uploadDoneMock = vi.fn();
@@ -11,6 +12,7 @@ const uploadOnMock = vi.fn();
 vi.mock('node:fs/promises', () => ({
   stat: statMock,
   mkdir: mkdirMock,
+  unlink: unlinkMock,
 }));
 
 vi.mock('node:fs', () => ({
@@ -86,6 +88,7 @@ describe('TransferService', () => {
     vi.useRealTimers();
     statMock.mockReset();
     mkdirMock.mockReset();
+    unlinkMock.mockReset();
     createReadStreamMock.mockReset();
     createWriteStreamMock.mockReset();
     uploadDoneMock.mockReset();
@@ -122,7 +125,7 @@ describe('TransferService', () => {
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: id }));
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: id, success: true }),
+      expect.objectContaining({ transferId: id, status: 'completed', success: true }),
     );
   });
 
@@ -227,7 +230,67 @@ describe('TransferService', () => {
     expect(service.getTransfer(id)?.status).toBe('cancelled');
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: id, success: false, error: 'Cancelled' }),
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false, error: 'Cancelled' }),
+    );
+  });
+
+  it('cancels queued transfers before they start', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+      async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+          setTimeout(resolve, 50);
+        }),
+    );
+
+    const activeId = await service.enqueue(createRequest(), {} as never);
+    const queuedId = await service.enqueue(
+      createRequest({ sourcePath: '/tmp/queued.txt', destinationPath: 'uploads/queued.txt' }),
+      {} as never,
+    );
+
+    await flushQueue();
+    service.cancel(queuedId);
+    await flushQueue();
+
+    expect(service.getTransfer(queuedId)).toMatchObject({ status: 'cancelled', error: 'Cancelled' });
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: queuedId, status: 'cancelled', success: false, error: 'Cancelled' }),
+    );
+
+    service.cancel(activeId);
+    await flushQueue();
+  });
+
+  it('cancels transfers while waiting to retry', async () => {
+    vi.useFakeTimers();
+
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
+
+    const id = await service.enqueue(createRequest(), {} as never);
+    await flushQueue();
+
+    expect(service.getTransfer(id)).toMatchObject({ status: 'queued', retryCount: 1, error: 'boom' });
+
+    service.cancel(id);
+    await flushQueue();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(service.getTransfer(id)).toMatchObject({ status: 'cancelled', error: 'Cancelled' });
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false, error: 'Cancelled' }),
     );
   });
 
@@ -256,7 +319,7 @@ describe('TransferService', () => {
     expect(item.status).toBe('cancelled');
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: 'aborted-before-start', success: false, error: 'Cancelled' }),
+      expect.objectContaining({ transferId: 'aborted-before-start', status: 'cancelled', success: false, error: 'Cancelled' }),
     );
     expect(send).not.toHaveBeenCalledWith(
       'transfer:complete',
@@ -328,6 +391,40 @@ describe('TransferService', () => {
     expect(write).toHaveBeenCalledTimes(2);
     expect(item.bytesTransferred).toBe(5);
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: 'download-1', totalBytes: 5 }));
+  });
+
+  it('removes partial local files when a download is cancelled', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+      async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+        }),
+    );
+
+    const id = await service.enqueue(
+      createRequest({
+        direction: 'download',
+        sourcePath: 'folder/file.txt',
+        destinationPath: '/tmp/downloads/file.txt',
+      }),
+      {} as never,
+    );
+    await flushQueue();
+
+    service.cancel(id);
+    await flushQueue();
+    await flushQueue();
+
+    expect(unlinkMock).toHaveBeenCalledWith('/tmp/downloads/file.txt');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false, error: 'Cancelled' }),
+    );
   });
 
   it('throws a clear error when an S3 download has no body stream', async () => {

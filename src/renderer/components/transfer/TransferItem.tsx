@@ -18,6 +18,7 @@ export function TransferItem({ transfer: t }: Props) {
   const percentage =
     t.size > 0 ? Math.round((t.bytesTransferred / t.size) * 100) : 0;
   const isUpload = t.direction === 'upload';
+  const isTerminal = ['completed', 'failed', 'cancelled'].includes(t.status);
 
   const handleCancel = () => {
     window.api.invoke('transfer:cancel', t.id);
@@ -27,7 +28,7 @@ export function TransferItem({ transfer: t }: Props) {
     <div
       className={cn(
         'group flex items-center gap-3 rounded-md px-2 py-1.5 transition-opacity duration-300 hover:bg-white/[0.02]',
-        t.status === 'completed' && 'opacity-50'
+        isTerminal && 'opacity-60'
       )}
     >
       {/* Icon + filename */}
@@ -35,6 +36,8 @@ export function TransferItem({ transfer: t }: Props) {
         <div className="shrink-0">
           {t.status === 'completed' ? (
             <Check className="h-3.5 w-3.5 text-success" />
+          ) : t.status === 'cancelled' ? (
+            <X className="h-3.5 w-3.5 text-muted-foreground" />
           ) : (
             <span className="text-[11px] text-muted-foreground">
               {isUpload ? '\u2191' : '\u2193'}
@@ -44,7 +47,7 @@ export function TransferItem({ transfer: t }: Props) {
         <span
           className={cn(
             'truncate text-[12px]',
-            t.status === 'completed' && 'text-muted-foreground'
+            isTerminal && 'text-muted-foreground'
           )}
         >
           {t.fileName}
@@ -64,6 +67,8 @@ export function TransferItem({ transfer: t }: Props) {
               'h-full rounded-full transition-all duration-300',
               t.status === 'failed'
                 ? 'bg-destructive'
+                : t.status === 'cancelled'
+                  ? 'bg-muted-foreground/50'
                 : t.status === 'completed'
                   ? 'bg-success'
                   : isUpload
@@ -82,7 +87,7 @@ export function TransferItem({ transfer: t }: Props) {
               width:
                 t.status === 'queued'
                   ? '40%'
-                  : t.status === 'completed'
+                  : ['completed', 'cancelled'].includes(t.status)
                     ? '100%'
                     : `${percentage}%`,
             }}
@@ -94,6 +99,8 @@ export function TransferItem({ transfer: t }: Props) {
       <span className="w-8 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
         {t.status === 'completed'
           ? '\u2713'
+          : t.status === 'cancelled'
+            ? '\u2014'
           : t.status === 'failed'
             ? '\u2717'
             : t.status === 'queued'
@@ -107,6 +114,8 @@ export function TransferItem({ transfer: t }: Props) {
             ? 'waiting'
             : t.status === 'completed'
               ? 'done'
+              : t.status === 'cancelled'
+                ? 'cancelled'
               : ''}
       </span>
 

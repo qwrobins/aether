@@ -53,9 +53,26 @@ describe('useTransferStore', () => {
       status: 'active',
     });
 
-    useTransferStore.getState().markComplete({ transferId: 'one', success: true });
+    useTransferStore.getState().markComplete({ transferId: 'one', status: 'completed', success: true });
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(useTransferStore.getState().transfers[0].completedAt).toBeTypeOf('string');
+  });
+
+  it('preserves cancelled completion state', () => {
+    useTransferStore.setState({ transfers: [transfer({ id: 'one', status: 'active' })] });
+
+    useTransferStore.getState().markComplete({
+      transferId: 'one',
+      status: 'cancelled',
+      success: false,
+      error: 'Cancelled',
+    });
+
+    expect(useTransferStore.getState().transfers[0]).toMatchObject({
+      status: 'cancelled',
+      error: 'Cancelled',
+      speed: 0,
+    });
   });
 
   it('reports counts and remaining bytes from active and queued transfers', () => {

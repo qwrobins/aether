@@ -40,6 +40,7 @@ export interface TransferProgress {
 
 export interface TransferResult {
   transferId: string;
+  status: Extract<TransferStatus, 'completed' | 'failed' | 'cancelled'>;
   success: boolean;
   error?: string;
 }

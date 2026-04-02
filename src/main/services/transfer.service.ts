@@ -1,7 +1,7 @@
 import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat, mkdir } from 'node:fs/promises';
+import { stat, mkdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -51,6 +51,8 @@ export class TransferService {
   private queue: PQueue;
   private transfers: Map<string, TransferItem> = new Map();
   private abortControllers: Map<string, AbortController> = new Map();
+  private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private terminalTransfers: Set<string> = new Set();
   private window: BrowserWindow | null = null;
 
   constructor(concurrency = 3) {
@@ -95,7 +97,10 @@ export class TransferService {
 
     this.queue
       .add(async () => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          await this.cancelTransfer(item);
+          return;
+        }
         await this.executeTransfer(item, s3Client, sftpClient, controller.signal);
       })
       .catch(() => {
@@ -112,8 +117,7 @@ export class TransferService {
     signal?: AbortSignal,
   ): Promise<void> {
     if (signal?.aborted) {
-      item.status = 'cancelled';
-      this.emitComplete(item.id, false, 'Cancelled');
+      await this.cancelTransfer(item);
       return;
     }
 
@@ -133,19 +137,14 @@ export class TransferService {
       }
 
       if (signal?.aborted) {
-        item.status = 'cancelled';
-        this.emitComplete(item.id, false, 'Cancelled');
+        await this.cancelTransfer(item);
         return;
       }
 
-      item.status = 'completed';
-      item.completedAt = new Date().toISOString();
-      item.bytesTransferred = item.size;
-      this.emitComplete(item.id, true);
+      this.completeTransfer(item);
     } catch (error: unknown) {
       if (signal?.aborted) {
-        item.status = 'cancelled';
-        this.emitComplete(item.id, false, 'Cancelled');
+        await this.cancelTransfer(item);
       } else {
         item.status = 'failed';
         item.error = getErrorMessage(error);
@@ -156,10 +155,10 @@ export class TransferService {
           item.status = 'queued';
           item.bytesTransferred = 0;
           const delay = Math.pow(2, item.retryCount) * 1000;
-          setTimeout(() => {
+          const retryTimer = setTimeout(() => {
+            this.retryTimers.delete(item.id);
             if (signal?.aborted) {
-              item.status = 'cancelled';
-              this.emitComplete(item.id, false, 'Cancelled');
+              void this.cancelTransfer(item);
               return;
             }
 
@@ -169,6 +168,9 @@ export class TransferService {
               })
               .catch(() => undefined);
           }, delay);
+          this.retryTimers.set(item.id, retryTimer);
+        } else {
+          this.failTransfer(item, item.error);
         }
       }
     }
@@ -306,11 +308,22 @@ export class TransferService {
   }
 
   cancel(id: string): void {
+    const retryTimer = this.retryTimers.get(id);
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      this.retryTimers.delete(id);
+    }
+
     const controller = this.abortControllers.get(id);
-    if (controller) controller.abort();
     const item = this.transfers.get(id);
-    if (item && item.status !== 'completed') {
-      item.status = 'cancelled';
+    if (!item || this.terminalTransfers.has(id)) {
+      return;
+    }
+
+    controller?.abort();
+
+    if (item.status !== 'active') {
+      void this.cancelTransfer(item);
     }
   }
 
@@ -318,7 +331,77 @@ export class TransferService {
     for (const [id, item] of this.transfers) {
       if (['completed', 'failed', 'cancelled'].includes(item.status)) {
         this.transfers.delete(id);
-        this.abortControllers.delete(id);
+        this.cleanupTransferResources(id);
+        this.terminalTransfers.delete(id);
+      }
+    }
+  }
+
+  private completeTransfer(item: TransferItem): void {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    item.status = 'completed';
+    item.error = undefined;
+    item.completedAt = new Date().toISOString();
+    item.bytesTransferred = item.size;
+    item.speed = 0;
+    this.terminalTransfers.add(item.id);
+    this.cleanupTransferResources(item.id);
+    this.emitComplete(item.id, 'completed');
+  }
+
+  private failTransfer(item: TransferItem, error: string): void {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    item.status = 'failed';
+    item.error = error;
+    item.completedAt = new Date().toISOString();
+    item.speed = 0;
+    this.terminalTransfers.add(item.id);
+    this.cleanupTransferResources(item.id);
+    this.emitComplete(item.id, 'failed', error);
+  }
+
+  private async cancelTransfer(item: TransferItem): Promise<void> {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    item.status = 'cancelled';
+    item.error = 'Cancelled';
+    item.completedAt = new Date().toISOString();
+    item.speed = 0;
+    await this.cleanupCancelledDownload(item);
+    this.terminalTransfers.add(item.id);
+    this.cleanupTransferResources(item.id);
+    this.emitComplete(item.id, 'cancelled', 'Cancelled');
+  }
+
+  private cleanupTransferResources(id: string): void {
+    const retryTimer = this.retryTimers.get(id);
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      this.retryTimers.delete(id);
+    }
+
+    this.abortControllers.delete(id);
+  }
+
+  private async cleanupCancelledDownload(item: TransferItem): Promise<void> {
+    if (item.direction !== 'download') {
+      return;
+    }
+
+    try {
+      await unlink(item.destinationPath);
+    } catch (error) {
+      const fsError = error as NodeJS.ErrnoException;
+      if (fsError.code !== 'ENOENT') {
+        console.warn(`[Aether] Failed to remove partial download for ${item.id}:`, error);
       }
     }
   }
@@ -337,10 +420,15 @@ export class TransferService {
     } as TransferProgress);
   }
 
-  private emitComplete(id: string, success: boolean, error?: string): void {
+  private emitComplete(
+    id: string,
+    status: Extract<TransferItem['status'], 'completed' | 'failed' | 'cancelled'>,
+    error?: string,
+  ): void {
     this.window?.webContents.send(IpcChannels.TRANSFER_COMPLETE, {
       transferId: id,
-      success,
+      status,
+      success: status === 'completed',
       error,
     } as TransferResult);
   }
