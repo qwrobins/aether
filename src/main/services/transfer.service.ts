@@ -323,7 +323,9 @@ export class TransferService {
     controller?.abort();
 
     if (item.status !== 'active') {
-      void this.cancelTransfer(item);
+      this.cancelTransfer(item).catch((error) => {
+        console.error(`[Aether] Failed to cancel transfer ${id}:`, error);
+      });
     }
   }
 

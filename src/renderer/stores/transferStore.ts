@@ -50,7 +50,7 @@ export const useTransferStore = create<TransferState>((set, get) => ({
         t.id === result.transferId
           ? {
               ...t,
-              status: result.status ?? (result.success ? ('completed' as const) : ('failed' as const)),
+              status: result.status,
               error: result.error,
               completedAt: new Date().toISOString(),
               speed: 0,
