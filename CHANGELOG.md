@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/qwrobins/aether/compare/v0.1.5...v0.1.6) (2026-04-02)
+
+
+### Bug Fixes
+
+* replace globstar with find for asset collection on macOS ([cea7666](https://github.com/qwrobins/aether/commit/cea7666edb974aa7d9276522d18955d15651e227))
+* replace globstar with find for macOS-compatible asset collection ([c9e1418](https://github.com/qwrobins/aether/commit/c9e14182b85e8ac6ad56b16c2a243830c30a6df2))
+
 ## [0.1.5](https://github.com/qwrobins/aether/compare/v0.1.4...v0.1.5) (2026-04-02)
 
 
