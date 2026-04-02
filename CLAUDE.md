@@ -96,6 +96,11 @@ Aether is an Electron file transfer application supporting AWS S3 and SFTP with 
 - Reject invalid payloads early with descriptive errors rather than coercing questionable input
 - Keep validation logic close to each IPC handler unless multiple handlers share the same rules
 
+### Commit Messages
+- Use [Conventional Commits](https://www.conventionalcommits.org/) format: `type(scope): description`
+- Common types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`
+- release-please uses these to determine version bumps and generate the changelog
+
 ### Release and Packaging Notes
 - Keep dev and packaged behavior aligned: asset paths, preload paths, and window creation should work in both modes
 - When changing Electron packaging behavior, verify Linux-oriented flows first unless the task is explicitly platform-specific
