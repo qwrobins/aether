@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/qwrobins/aether/compare/v0.1.4...v0.1.5) (2026-04-02)
+
+
+### Bug Fixes
+
+* use PAT for release-please to allow downstream workflow triggers ([29a9d89](https://github.com/qwrobins/aether/commit/29a9d89ac974cf5e7c71466cc97ef3301e3a70bf))
+* use PAT for release-please to trigger release builds ([50ae39c](https://github.com/qwrobins/aether/commit/50ae39c0571f4c0d3e34fde14d8f9bdbc73a9cc7))
+
 ## [0.1.4](https://github.com/qwrobins/aether/compare/v0.1.3...v0.1.4) (2026-04-02)
 
 
