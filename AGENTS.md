@@ -90,6 +90,8 @@ Aether is an Electron file transfer app for local files, AWS S3, and SFTP. Prese
 - For small localized changes, a single focused agent is preferred
 - Before pushing any changes or opening a PR, run the CodeRabbit CLI locally and work through its reviews until no findings remain in the current local code
 - If no PR exists yet, only open it after the local CodeRabbit pass is clean and the branch is ready to push
+- For release work, keep `package.json` version and the release tag in sync; use semantic version tags like `v1.2.3`
+- The release workflow publishes Linux and macOS artifacts only; verify release changes against those targets and avoid adding Windows-specific release steps unless explicitly requested
 
 ## Validation and Verification
 - Run `npm run lint` after non-trivial code changes
@@ -101,6 +103,8 @@ Aether is an Electron file transfer app for local files, AWS S3, and SFTP. Prese
 - Keep dev and packaged behavior aligned, especially asset and preload paths
 - Verify Linux-oriented packaging flows first unless the task is platform-specific
 - Never commit secrets, live credentials, or machine-specific paths
+- Before creating or pushing a release tag, run the local CodeRabbit CLI, `npm run lint`, and the relevant packaging checks for the release changes
+- Release automation lives in `.github/workflows/release.yml`; keep it tag-driven and ensure release artifacts come from GitHub Actions rather than manual local uploads
 
 ## References
 - `CLAUDE.md`: full project guidance
