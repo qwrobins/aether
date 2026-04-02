@@ -387,13 +387,14 @@ export class TransferService {
       return;
     }
 
+    this.terminalTransfers.add(item.id);
+
     item.status = 'cancelled';
     item.error = undefined;
     item.completedAt = new Date().toISOString();
     item.speed = 0;
     await this.closeSftpTransferClient(item.id, 'abort');
     await this.cleanupCancelledDownload(item);
-    this.terminalTransfers.add(item.id);
     await this.cleanupTransferResources(item.id);
     this.emitComplete({
       transferId: item.id,

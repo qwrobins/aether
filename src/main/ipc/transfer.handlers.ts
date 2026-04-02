@@ -9,6 +9,42 @@ import type { TransferRequest, TransferItem } from '@shared/types/transfer';
 const transferService = new TransferService();
 const fs = new FilesystemService();
 
+function validateTransferRequest(request: TransferRequest) {
+  if (!request.connectionId || typeof request.connectionId !== 'string') {
+    throw new Error('Connection ID is required');
+  }
+
+  if (typeof request.sourcePath !== 'string' || request.sourcePath.trim().length === 0) {
+    throw new Error('Source path is required');
+  }
+
+  if (
+    typeof request.destinationPath !== 'string' ||
+    request.destinationPath.trim().length === 0
+  ) {
+    throw new Error('Destination path is required');
+  }
+
+  if (request.direction !== 'upload' && request.direction !== 'download') {
+    throw new Error('Transfer direction must be upload or download');
+  }
+
+  if (request.connectionType !== 's3' && request.connectionType !== 'sftp') {
+    throw new Error('Connection type must be s3 or sftp');
+  }
+
+  try {
+    if (request.connectionType === 's3') {
+      return { s3Client: s3Service.getClient(request.connectionId) };
+    }
+
+    sftpService.getClient(request.connectionId);
+    return { s3Client: undefined };
+  } catch {
+    throw new Error('Connection not found');
+  }
+}
+
 export function getTransferService(): TransferService {
   return transferService;
 }
@@ -25,11 +61,7 @@ export function registerTransferHandlers(
   ipcMain.handle(
     IpcChannels.TRANSFER_START,
     async (_event, request: TransferRequest): Promise<string | TransferItem[]> => {
-      let s3Client;
-
-      if (request.connectionType === 's3') {
-        s3Client = s3Service.getClient(request.connectionId);
-      }
+      const { s3Client } = validateTransferRequest(request);
 
       const enqueueTransfer = async (
         transferRequest: TransferRequest,

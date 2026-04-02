@@ -30,6 +30,7 @@ vi.mock('@aws-sdk/lib-storage', () => ({
 }));
 
 type TransferServiceInternals = {
+  cancelTransfer: (item: TransferItem) => Promise<void>;
   emitProgress: (id: string, bytes: number, total: number, speed: number) => void;
   transfers: Map<string, TransferItem>;
   abortControllers: Map<string, AbortController>;
@@ -502,6 +503,57 @@ describe('TransferService', () => {
       'transfer:complete',
       expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
     );
+  });
+
+  it('blocks concurrent cancellation cleanup for the same transfer', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    let releaseClose: (() => void) | undefined;
+    const closeSftpTransferClient = vi
+      .spyOn(service as never, 'closeSftpTransferClient')
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseClose = resolve;
+          }),
+      );
+    const cleanupCancelledDownload = vi
+      .spyOn(service as never, 'cleanupCancelledDownload')
+      .mockResolvedValue(undefined);
+    const cleanupTransferResources = vi
+      .spyOn(service as never, 'cleanupTransferResources')
+      .mockResolvedValue(undefined);
+    const emitComplete = vi.spyOn(service as never, 'emitComplete').mockImplementation(() => undefined);
+
+    const item: TransferItem = {
+      id: 'cancel-race',
+      fileName: 'demo.txt',
+      ...createRequest(),
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    const firstCancel = internals.cancelTransfer(item);
+    const secondCancel = internals.cancelTransfer(item);
+    await flushQueue();
+
+    expect(closeSftpTransferClient).toHaveBeenCalledTimes(1);
+    expect(cleanupCancelledDownload).not.toHaveBeenCalled();
+    expect(cleanupTransferResources).not.toHaveBeenCalled();
+    expect(emitComplete).not.toHaveBeenCalled();
+
+    releaseClose?.();
+    await Promise.all([firstCancel, secondCancel]);
+
+    expect(cleanupCancelledDownload).toHaveBeenCalledTimes(1);
+    expect(cleanupTransferResources).toHaveBeenCalledTimes(1);
+    expect(emitComplete).toHaveBeenCalledTimes(1);
+    expect(item.status).toBe('cancelled');
   });
 
   it('throws a clear error when an S3 download has no body stream', async () => {

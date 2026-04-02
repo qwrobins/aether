@@ -218,4 +218,46 @@ describe('registerTransferHandlers', () => {
     expect(cancel).toHaveBeenCalledWith('transfer-1');
     expect(enqueue).toHaveBeenCalledTimes(2);
   });
+
+  it('validates transfer requests before queueing work', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
+    const { registerTransferHandlers } = await import('../transfer.handlers');
+    registerTransferHandlers(ipcMain as never, {} as never);
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionId: '' as never })),
+    ).rejects.toThrow('Connection ID is required');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '' as never })),
+    ).rejects.toThrow('Source path is required');
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ destinationPath: '   ' })),
+    ).rejects.toThrow('Destination path is required');
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ direction: 'sync' as never })),
+    ).rejects.toThrow('Transfer direction must be upload or download');
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'ftp' as never })),
+    ).rejects.toThrow('Connection type must be s3 or sftp');
+
+    getS3Client.mockImplementationOnce(() => {
+      throw new Error('Not connected');
+    });
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 's3' })),
+    ).rejects.toThrow('Connection not found');
+
+    getSftpClient.mockImplementationOnce(() => {
+      throw new Error('Not connected');
+    });
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'sftp' })),
+    ).rejects.toThrow('Connection not found');
+  });
 });
