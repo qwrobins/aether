@@ -233,18 +233,22 @@ describe('registerTransferHandlers', () => {
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '' as never })),
     ).rejects.toThrow('Source path is required');
+    expect(enqueue).not.toHaveBeenCalled();
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ destinationPath: '   ' })),
     ).rejects.toThrow('Destination path is required');
+    expect(enqueue).not.toHaveBeenCalled();
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ direction: 'sync' as never })),
     ).rejects.toThrow('Transfer direction must be upload or download');
+    expect(enqueue).not.toHaveBeenCalled();
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'ftp' as never })),
     ).rejects.toThrow('Connection type must be s3 or sftp');
+    expect(enqueue).not.toHaveBeenCalled();
 
     getS3Client.mockImplementationOnce(() => {
       throw new Error('Not connected');
@@ -252,6 +256,7 @@ describe('registerTransferHandlers', () => {
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 's3' })),
     ).rejects.toThrow('Connection not found');
+    expect(enqueue).not.toHaveBeenCalled();
 
     getSftpClient.mockImplementationOnce(() => {
       throw new Error('Not connected');
@@ -259,5 +264,6 @@ describe('registerTransferHandlers', () => {
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'sftp' })),
     ).rejects.toThrow('Connection not found');
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
