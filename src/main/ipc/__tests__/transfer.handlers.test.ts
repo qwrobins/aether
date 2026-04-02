@@ -20,6 +20,7 @@ const enqueue = vi.fn(async (request: TransferRequest, _s3Client?: unknown, _sft
 
 const getTransfer = vi.fn((id: string) => transferItems.get(id));
 const setWindow = vi.fn();
+const setSftpClientFactory = vi.fn();
 const cancel = vi.fn();
 const clear = vi.fn();
 const getTransfers = vi.fn(() => Array.from(transferItems.values()));
@@ -34,6 +35,7 @@ const listSftpFilesRecursive = vi.fn();
 vi.mock('../../services/transfer.service', () => ({
   TransferService: class TransferService {
     setWindow = setWindow;
+    setSftpClientFactory = setSftpClientFactory;
     enqueue = enqueue;
     getTransfer = getTransfer;
     cancel = cancel;
@@ -59,6 +61,7 @@ vi.mock('../s3.handlers', () => ({
 vi.mock('../sftp.handlers', () => ({
   sftpService: {
     getClient: getSftpClient,
+    createTransferClient: vi.fn(async () => ({ kind: 'transfer-sftp-client' })),
     listFilesRecursive: listSftpFilesRecursive,
   },
 }));
@@ -81,6 +84,7 @@ describe('registerTransferHandlers', () => {
     enqueue.mockClear();
     getTransfer.mockClear();
     setWindow.mockClear();
+    setSftpClientFactory.mockClear();
     cancel.mockClear();
     clear.mockClear();
     getTransfers.mockClear();
@@ -143,8 +147,8 @@ describe('registerTransferHandlers', () => {
       sourcePath: 'photos/2026/a.jpg',
       destinationPath: '/downloads/photos/a.jpg',
     });
-    expect(enqueue.mock.calls[0][3]).toBe(12);
-    expect(enqueue.mock.calls[1][3]).toBe(30);
+    expect(enqueue.mock.calls[0][2]).toBe(12);
+    expect(enqueue.mock.calls[1][2]).toBe(30);
   });
 
   it('expands SFTP directory downloads into nested destinations', async () => {
@@ -177,5 +181,89 @@ describe('registerTransferHandlers', () => {
       sourcePath: '/remote/root/deep/asset.bin',
       destinationPath: '/local/root/deep/asset.bin',
     });
+  });
+
+  it('throws a clear IPC error and rolls back queued children when directory expansion enqueue fails', async () => {
+    stat.mockResolvedValue({ isDirectory: true });
+    listFilesRecursive.mockResolvedValue([
+      { path: '/tmp/source/a.txt', relativePath: 'a.txt' },
+      { path: '/tmp/source/b.txt', relativePath: 'b.txt' },
+    ]);
+    enqueue
+      .mockImplementationOnce(async (request: TransferRequest) => {
+        const id = 'transfer-1';
+        transferItems.set(id, {
+          id,
+          fileName: request.sourcePath.split('/').pop() ?? request.sourcePath,
+          ...request,
+          size: 0,
+          bytesTransferred: 0,
+          status: 'queued',
+          speed: 0,
+          retryCount: 0,
+        });
+        return id;
+      })
+      .mockRejectedValueOnce(new Error('SFTP client is not connected'));
+
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
+    const { registerTransferHandlers } = await import('../transfer.handlers');
+    registerTransferHandlers(ipcMain as never, {} as never);
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '/tmp/source', destinationPath: '/remote/base/' })),
+    ).rejects.toThrow('Directory upload queueing failed: SFTP client is not connected');
+
+    expect(cancel).toHaveBeenCalledWith('transfer-1');
+    expect(enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it('validates transfer requests before queueing work', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
+    const { registerTransferHandlers } = await import('../transfer.handlers');
+    registerTransferHandlers(ipcMain as never, {} as never);
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionId: '' as never })),
+    ).rejects.toThrow('Connection ID is required');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '' as never })),
+    ).rejects.toThrow('Source path is required');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ destinationPath: '   ' })),
+    ).rejects.toThrow('Destination path is required');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ direction: 'sync' as never })),
+    ).rejects.toThrow('Transfer direction must be upload or download');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'ftp' as never })),
+    ).rejects.toThrow('Connection type must be s3 or sftp');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    getS3Client.mockImplementationOnce(() => {
+      throw new Error('Not connected');
+    });
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 's3' })),
+    ).rejects.toThrow('Connection not found');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    getSftpClient.mockImplementationOnce(() => {
+      throw new Error('Not connected');
+    });
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'sftp' })),
+    ).rejects.toThrow('Connection not found');
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });

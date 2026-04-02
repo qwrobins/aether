@@ -84,7 +84,7 @@ describe('useTransferEvents', () => {
       status: 'active',
     });
 
-    handlers.get('transfer:complete')?.({ transferId: 'upload-1', success: true });
+    handlers.get('transfer:complete')?.({ transferId: 'upload-1', status: 'completed', success: true });
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(remoteRefresh).toHaveBeenCalledTimes(1);
   });
@@ -135,10 +135,41 @@ describe('useTransferEvents', () => {
       totalBytes: 100,
       speed: 10,
     });
-    handlers.get('transfer:complete')?.({ transferId: 'download-1', success: true });
+    handlers.get('transfer:complete')?.({ transferId: 'download-1', status: 'completed', success: true });
 
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(localRefresh).toHaveBeenCalledTimes(1);
+    expect(remoteRefresh).not.toHaveBeenCalled();
+  });
+
+  it('marks cancelled transfers without refreshing panes', () => {
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
+
+    const localRefresh = vi.fn();
+    const remoteRefresh = vi.fn();
+    useLocalPanelStore.setState({ refresh: localRefresh });
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.setState({
+      transfers: [transfer({ id: 'upload-1', direction: 'upload', status: 'active' })],
+    });
+
+    render(<HookHarness />);
+
+    handlers.get('transfer:complete')?.({
+      transferId: 'upload-1',
+      status: 'cancelled',
+      success: false,
+    });
+
+    expect(useTransferStore.getState().transfers[0]).toMatchObject({
+      status: 'cancelled',
+    });
+    expect(useTransferStore.getState().transfers[0].error).toBeUndefined();
+    expect(localRefresh).not.toHaveBeenCalled();
     expect(remoteRefresh).not.toHaveBeenCalled();
   });
 });

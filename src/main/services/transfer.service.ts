@@ -1,12 +1,13 @@
 import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { stat, mkdir } from 'node:fs/promises';
+import { stat, mkdir, unlink, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import type { Progress } from '@aws-sdk/lib-storage';
 import type {
+  SftpTransferClient,
   TransferItem,
   TransferRequest,
   TransferProgress,
@@ -14,20 +15,7 @@ import type {
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
 
-type SftpTransferClient = {
-  mkdir: (path: string, recursive: boolean) => Promise<void>;
-  fastPut: (
-    sourcePath: string,
-    destinationPath: string,
-    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
-  ) => Promise<void>;
-  stat: (path: string) => Promise<{ size: number }>;
-  fastGet: (
-    sourcePath: string,
-    destinationPath: string,
-    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
-  ) => Promise<void>;
-};
+type SftpClientFactory = (connectionId: string) => Promise<SftpTransferClient>;
 
 class NonRetryableError extends Error {
   constructor(message: string) {
@@ -51,6 +39,10 @@ export class TransferService {
   private queue: PQueue;
   private transfers: Map<string, TransferItem> = new Map();
   private abortControllers: Map<string, AbortController> = new Map();
+  private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private sftpClients: Map<string, SftpTransferClient> = new Map();
+  private terminalTransfers: Set<string> = new Set();
+  private sftpClientFactory?: SftpClientFactory;
   private window: BrowserWindow | null = null;
 
   constructor(concurrency = 3) {
@@ -59,6 +51,10 @@ export class TransferService {
 
   setWindow(window: BrowserWindow): void {
     this.window = window;
+  }
+
+  setSftpClientFactory(factory: SftpClientFactory): void {
+    this.sftpClientFactory = factory;
   }
 
   getTransfers(): TransferItem[] {
@@ -72,7 +68,6 @@ export class TransferService {
   async enqueue(
     request: TransferRequest,
     s3Client?: S3Client,
-    sftpClient?: SftpTransferClient,
     size?: number,
   ): Promise<string> {
     const id = crypto.randomUUID();
@@ -80,6 +75,8 @@ export class TransferService {
       id,
       fileName: path.basename(request.sourcePath),
       ...request,
+      tempPath:
+        request.direction === 'download' ? `${request.destinationPath}.part` : undefined,
       size: size ?? 0,
       bytesTransferred: 0,
       status: 'queued',
@@ -95,8 +92,11 @@ export class TransferService {
 
     this.queue
       .add(async () => {
-        if (controller.signal.aborted) return;
-        await this.executeTransfer(item, s3Client, sftpClient, controller.signal);
+        if (controller.signal.aborted) {
+          await this.cancelTransfer(item);
+          return;
+        }
+        await this.executeTransfer(item, s3Client, controller.signal);
       })
       .catch(() => {
         // Queue errors handled in executeTransfer
@@ -108,12 +108,10 @@ export class TransferService {
   private async executeTransfer(
     item: TransferItem,
     s3Client?: S3Client,
-    sftpClient?: SftpTransferClient,
     signal?: AbortSignal,
   ): Promise<void> {
     if (signal?.aborted) {
-      item.status = 'cancelled';
-      this.emitComplete(item.id, false, 'Cancelled');
+      await this.cancelTransfer(item);
       return;
     }
 
@@ -128,24 +126,19 @@ export class TransferService {
         if (!s3Client) throw new NonRetryableError('S3 client is not connected');
         await this.executeS3Transfer(item, s3Client, signal, startTime);
       } else if (item.connectionType === 'sftp') {
-        if (!sftpClient) throw new NonRetryableError('SFTP client is not connected');
+        const sftpClient = await this.getOrCreateSftpTransferClient(item.id, item.connectionId);
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
       }
 
       if (signal?.aborted) {
-        item.status = 'cancelled';
-        this.emitComplete(item.id, false, 'Cancelled');
+        await this.cancelTransfer(item);
         return;
       }
 
-      item.status = 'completed';
-      item.completedAt = new Date().toISOString();
-      item.bytesTransferred = item.size;
-      this.emitComplete(item.id, true);
+      await this.completeTransfer(item);
     } catch (error: unknown) {
       if (signal?.aborted) {
-        item.status = 'cancelled';
-        this.emitComplete(item.id, false, 'Cancelled');
+        await this.cancelTransfer(item);
       } else {
         item.status = 'failed';
         item.error = getErrorMessage(error);
@@ -156,19 +149,22 @@ export class TransferService {
           item.status = 'queued';
           item.bytesTransferred = 0;
           const delay = Math.pow(2, item.retryCount) * 1000;
-          setTimeout(() => {
+          const retryTimer = setTimeout(() => {
+            this.retryTimers.delete(item.id);
             if (signal?.aborted) {
-              item.status = 'cancelled';
-              this.emitComplete(item.id, false, 'Cancelled');
+              void this.cancelTransfer(item);
               return;
             }
 
             this.queue
               .add(async () => {
-                await this.executeTransfer(item, s3Client, sftpClient, signal);
+                await this.executeTransfer(item, s3Client, signal);
               })
               .catch(() => undefined);
           }, delay);
+          this.retryTimers.set(item.id, retryTimer);
+        } else {
+          await this.failTransfer(item, item.error);
         }
       }
     }
@@ -230,24 +226,37 @@ export class TransferService {
       if (!body) {
         throw new NonRetryableError('S3 response body is empty');
       }
-      const writeStream = createWriteStream(item.destinationPath);
+      const writeStream = createWriteStream(this.getDownloadPath(item));
+      const handleAbort = () => {
+        writeStream.destroy(new Error('Aborted'));
+      };
 
-      let downloaded = 0;
-      for await (const chunk of body as AsyncIterable<Buffer>) {
-        if (signal?.aborted) throw new Error('Aborted');
-        writeStream.write(chunk);
-        downloaded += chunk.length;
-        item.bytesTransferred = downloaded;
-        const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
-        item.speed = elapsed > 0 ? downloaded / elapsed : 0;
-        this.emitProgress(item.id, downloaded, item.size, item.speed);
+      if (signal) {
+        signal.addEventListener('abort', handleAbort, { once: true });
       }
 
-      await new Promise<void>((resolve, reject) => {
-        writeStream.end();
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-      });
+      let downloaded = 0;
+      try {
+        for await (const chunk of body as AsyncIterable<Buffer>) {
+          if (signal?.aborted) throw new Error('Aborted');
+          writeStream.write(chunk);
+          downloaded += chunk.length;
+          item.bytesTransferred = downloaded;
+          const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
+          item.speed = elapsed > 0 ? downloaded / elapsed : 0;
+          this.emitProgress(item.id, downloaded, item.size, item.speed);
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          writeStream.end();
+          writeStream.on('finish', resolve);
+          writeStream.on('error', reject);
+        });
+      } finally {
+        signal?.removeEventListener('abort', handleAbort);
+      }
+
+      await this.finalizeDownload(item);
     }
   }
 
@@ -291,7 +300,7 @@ export class TransferService {
       const remoteStat = await client.stat(item.sourcePath);
       item.size = remoteStat.size;
 
-      await client.fastGet(item.sourcePath, item.destinationPath, {
+      await client.fastGet(item.sourcePath, this.getDownloadPath(item), {
         step: (totalTransferred: number, _chunk: number, total: number) => {
           if (signal?.aborted) return;
           item.bytesTransferred = totalTransferred;
@@ -302,24 +311,181 @@ export class TransferService {
         },
       });
       if (signal?.aborted) throw new Error('Aborted');
+      await this.finalizeDownload(item);
     }
   }
 
   cancel(id: string): void {
-    const controller = this.abortControllers.get(id);
-    if (controller) controller.abort();
-    const item = this.transfers.get(id);
-    if (item && item.status !== 'completed') {
-      item.status = 'cancelled';
+    const retryTimer = this.retryTimers.get(id);
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      this.retryTimers.delete(id);
     }
+
+    const controller = this.abortControllers.get(id);
+    const item = this.transfers.get(id);
+    if (!item || this.terminalTransfers.has(id)) {
+      return;
+    }
+
+    controller?.abort();
+    this.cancelTransfer(item).catch((error) => {
+      console.error(`[Aether] Failed to cancel transfer ${id}:`, error);
+    });
   }
 
   clear(): void {
     for (const [id, item] of this.transfers) {
       if (['completed', 'failed', 'cancelled'].includes(item.status)) {
         this.transfers.delete(id);
-        this.abortControllers.delete(id);
+        void this.cleanupTransferResources(id);
+        this.terminalTransfers.delete(id);
       }
+    }
+  }
+
+  private async completeTransfer(item: TransferItem): Promise<void> {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    item.status = 'completed';
+    item.error = undefined;
+    item.completedAt = new Date().toISOString();
+    item.bytesTransferred = item.size;
+    item.speed = 0;
+    this.terminalTransfers.add(item.id);
+    await this.cleanupTransferResources(item.id);
+    this.emitComplete({
+      transferId: item.id,
+      status: 'completed',
+      success: true,
+    });
+  }
+
+  private async failTransfer(item: TransferItem, error: string): Promise<void> {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    item.status = 'failed';
+    item.error = error;
+    item.completedAt = new Date().toISOString();
+    item.speed = 0;
+    this.terminalTransfers.add(item.id);
+    await this.cleanupTransferResources(item.id);
+    this.emitComplete({
+      transferId: item.id,
+      status: 'failed',
+      success: false,
+      error,
+    });
+  }
+
+  private async cancelTransfer(item: TransferItem): Promise<void> {
+    if (this.terminalTransfers.has(item.id)) {
+      return;
+    }
+
+    this.terminalTransfers.add(item.id);
+
+    item.status = 'cancelled';
+    item.error = undefined;
+    item.completedAt = new Date().toISOString();
+    item.speed = 0;
+    await this.closeSftpTransferClient(item.id, 'abort');
+    await this.cleanupCancelledDownload(item);
+    await this.cleanupTransferResources(item.id);
+    this.emitComplete({
+      transferId: item.id,
+      status: 'cancelled',
+      success: false,
+    });
+  }
+
+  private async cleanupTransferResources(id: string): Promise<void> {
+    const retryTimer = this.retryTimers.get(id);
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      this.retryTimers.delete(id);
+    }
+
+    this.abortControllers.delete(id);
+    await this.closeSftpTransferClient(id, 'disconnect');
+  }
+
+  private async cleanupCancelledDownload(item: TransferItem): Promise<void> {
+    if (item.direction !== 'download' || !item.tempPath) {
+      return;
+    }
+
+    try {
+      await unlink(item.tempPath);
+    } catch (error) {
+      const fsError = error as NodeJS.ErrnoException;
+      if (fsError.code !== 'ENOENT') {
+        console.warn(`[Aether] Failed to remove partial download for ${item.id}:`, error);
+      }
+    } finally {
+      item.tempPath = undefined;
+    }
+  }
+
+  private getDownloadPath(item: TransferItem): string {
+    return item.tempPath ?? item.destinationPath;
+  }
+
+  private async finalizeDownload(item: TransferItem): Promise<void> {
+    if (item.direction !== 'download' || !item.tempPath) {
+      return;
+    }
+
+    await rename(item.tempPath, item.destinationPath);
+    item.tempPath = undefined;
+  }
+
+  private async getOrCreateSftpTransferClient(
+    id: string,
+    connectionId: string,
+  ): Promise<SftpTransferClient> {
+    const existingClient = this.sftpClients.get(id);
+    if (existingClient) {
+      return existingClient;
+    }
+
+    if (!this.sftpClientFactory) {
+      throw new NonRetryableError('SFTP client is not connected');
+    }
+
+    const client = await this.sftpClientFactory(connectionId);
+    this.sftpClients.set(id, client);
+    return client;
+  }
+
+  private async closeSftpTransferClient(
+    id: string,
+    mode: 'abort' | 'disconnect',
+  ): Promise<void> {
+    const client = this.sftpClients.get(id);
+    if (!client) {
+      return;
+    }
+
+    this.sftpClients.delete(id);
+
+    const close =
+      mode === 'abort'
+        ? client.abort ?? client.disconnect
+        : client.disconnect ?? client.abort;
+
+    if (!close) {
+      return;
+    }
+
+    try {
+      await close.call(client);
+    } catch (error) {
+      console.warn(`[Aether] Failed to ${mode} SFTP transfer ${id}:`, error);
     }
   }
 
@@ -337,12 +503,8 @@ export class TransferService {
     } as TransferProgress);
   }
 
-  private emitComplete(id: string, success: boolean, error?: string): void {
-    this.window?.webContents.send(IpcChannels.TRANSFER_COMPLETE, {
-      transferId: id,
-      success,
-      error,
-    } as TransferResult);
+  private emitComplete(result: TransferResult): void {
+    this.window?.webContents.send(IpcChannels.TRANSFER_COMPLETE, result);
   }
 
   private emitError(id: string, error: string): void {

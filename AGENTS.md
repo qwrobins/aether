@@ -88,6 +88,8 @@ Aether is an Electron file transfer app for local files, AWS S3, and SFTP. Prese
 - Preserve existing patterns unless there is a clear project-wide reason to change them
 - For larger multi-file features, parallelize with agent teams when it reduces risk or waiting time
 - For small localized changes, a single focused agent is preferred
+- Before pushing any changes or opening a PR, run the CodeRabbit CLI locally and work through its reviews until no findings remain in the current local code
+- If no PR exists yet, only open it after the local CodeRabbit pass is clean and the branch is ready to push
 
 ## Validation and Verification
 - Run `npm run lint` after non-trivial code changes

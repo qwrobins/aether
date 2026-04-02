@@ -17,6 +17,7 @@ export interface TransferItem {
   fileName: string;
   sourcePath: string;
   destinationPath: string;
+  tempPath?: string;
   direction: TransferDirection;
   connectionId: string;
   connectionType: ConnectionType;
@@ -38,8 +39,37 @@ export interface TransferProgress {
   speed: number;
 }
 
-export interface TransferResult {
-  transferId: string;
-  success: boolean;
-  error?: string;
+export interface SftpTransferClient {
+  mkdir: (path: string, recursive: boolean) => Promise<void>;
+  fastPut: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  stat: (path: string) => Promise<{ size: number }>;
+  fastGet: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  abort?: () => Promise<void>;
+  disconnect?: () => Promise<void>;
 }
+
+export type TransferResult =
+  | {
+      transferId: string;
+      status: 'completed';
+      success: true;
+    }
+  | {
+      transferId: string;
+      status: 'failed';
+      success: false;
+      error: string;
+    }
+  | {
+      transferId: string;
+      status: 'cancelled';
+      success: false;
+    };

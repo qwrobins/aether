@@ -3,6 +3,8 @@ import type { TransferItem, TransferRequest } from '@shared/types/transfer';
 
 const statMock = vi.fn();
 const mkdirMock = vi.fn();
+const unlinkMock = vi.fn();
+const renameMock = vi.fn();
 const createReadStreamMock = vi.fn();
 const createWriteStreamMock = vi.fn();
 const uploadDoneMock = vi.fn();
@@ -11,6 +13,8 @@ const uploadOnMock = vi.fn();
 vi.mock('node:fs/promises', () => ({
   stat: statMock,
   mkdir: mkdirMock,
+  unlink: unlinkMock,
+  rename: renameMock,
 }));
 
 vi.mock('node:fs', () => ({
@@ -26,18 +30,14 @@ vi.mock('@aws-sdk/lib-storage', () => ({
 }));
 
 type TransferServiceInternals = {
+  cancelTransfer: (item: TransferItem) => Promise<void>;
   emitProgress: (id: string, bytes: number, total: number, speed: number) => void;
   transfers: Map<string, TransferItem>;
   abortControllers: Map<string, AbortController>;
+  setSftpClientFactory: (factory: (connectionId: string) => Promise<unknown>) => void;
   executeTransfer: (
     item: TransferItem,
     s3Client?: { send: ReturnType<typeof vi.fn> },
-    sftpClient?: {
-      mkdir: ReturnType<typeof vi.fn>;
-      fastPut: ReturnType<typeof vi.fn>;
-      stat: ReturnType<typeof vi.fn>;
-      fastGet: ReturnType<typeof vi.fn>;
-    },
     signal?: AbortSignal,
   ) => Promise<void>;
   executeS3Transfer: (
@@ -53,6 +53,8 @@ type TransferServiceInternals = {
       fastPut: ReturnType<typeof vi.fn>;
       stat: ReturnType<typeof vi.fn>;
       fastGet: ReturnType<typeof vi.fn>;
+      abort?: ReturnType<typeof vi.fn>;
+      disconnect?: ReturnType<typeof vi.fn>;
     },
     signal?: AbortSignal,
     startTime?: number,
@@ -86,6 +88,8 @@ describe('TransferService', () => {
     vi.useRealTimers();
     statMock.mockReset();
     mkdirMock.mockReset();
+    unlinkMock.mockReset();
+    renameMock.mockReset();
     createReadStreamMock.mockReset();
     createWriteStreamMock.mockReset();
     uploadDoneMock.mockReset();
@@ -122,7 +126,7 @@ describe('TransferService', () => {
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: id }));
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: id, success: true }),
+      expect.objectContaining({ transferId: id, status: 'completed', success: true }),
     );
   });
 
@@ -223,11 +227,143 @@ describe('TransferService', () => {
 
     service.cancel(id);
     await flushQueue();
+    await flushQueue();
 
     expect(service.getTransfer(id)?.status).toBe('cancelled');
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: id, success: false, error: 'Cancelled' }),
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
+    );
+  });
+
+  it('actively aborts dedicated SFTP clients when cancelling an active transfer', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    const client = {
+      mkdir: vi.fn(),
+      fastPut: vi.fn(),
+      stat: vi.fn(),
+      fastGet: vi.fn(),
+      abort: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    };
+
+    vi.spyOn(service as never, 'executeSftpTransfer').mockImplementation(
+      async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+        }),
+    );
+
+    internals.setSftpClientFactory(vi.fn(async () => client));
+
+    const id = await service.enqueue(
+      createRequest({ connectionType: 'sftp' }),
+      undefined,
+    );
+    await flushQueue();
+
+    service.cancel(id);
+    await flushQueue();
+    await flushQueue();
+
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(service.getTransfer(id)?.status).toBe('cancelled');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
+    );
+  });
+
+  it('uses the SFTP client factory when an SFTP transfer starts', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const createClient = vi.fn(async () => ({
+      mkdir: vi.fn(),
+      fastPut: vi.fn(async (_source: string, _dest: string, options: { step: (a: number, b: number, c: number) => void }) => {
+        options.step(20, 20, 20);
+      }),
+      stat: vi.fn(),
+      fastGet: vi.fn(),
+      abort: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }));
+    statMock.mockResolvedValue({ size: 20 });
+
+    internals.setSftpClientFactory(createClient);
+
+    const id = await service.enqueue(createRequest({ connectionType: 'sftp' }));
+    await flushQueue();
+    await flushQueue();
+
+    expect(createClient).toHaveBeenCalledTimes(1);
+    expect(createClient).toHaveBeenCalledWith('conn-1');
+    expect(service.getTransfer(id)?.status).toBe('completed');
+  });
+
+  it('cancels queued transfers before they start', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+      async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+          setTimeout(resolve, 50);
+        }),
+    );
+
+    const activeId = await service.enqueue(createRequest(), {} as never);
+    const queuedId = await service.enqueue(
+      createRequest({ sourcePath: '/tmp/queued.txt', destinationPath: 'uploads/queued.txt' }),
+      {} as never,
+    );
+
+    await flushQueue();
+    service.cancel(queuedId);
+    await flushQueue();
+    await flushQueue();
+
+    expect(service.getTransfer(queuedId)?.status).toBe('cancelled');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: queuedId, status: 'cancelled', success: false }),
+    );
+
+    service.cancel(activeId);
+    await flushQueue();
+  });
+
+  it('cancels transfers while waiting to retry', async () => {
+    vi.useFakeTimers();
+
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
+
+    const id = await service.enqueue(createRequest(), {} as never);
+    await flushQueue();
+
+    expect(service.getTransfer(id)).toMatchObject({ status: 'queued', retryCount: 1, error: 'boom' });
+
+    service.cancel(id);
+    await flushQueue();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(service.getTransfer(id)?.status).toBe('cancelled');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
     );
   });
 
@@ -251,12 +387,12 @@ describe('TransferService', () => {
       retryCount: 0,
     };
 
-    await internals.executeTransfer(item, {} as never, undefined, controller.signal);
+    await internals.executeTransfer(item, {} as never, controller.signal);
 
     expect(item.status).toBe('cancelled');
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
-      expect.objectContaining({ transferId: 'aborted-before-start', success: false, error: 'Cancelled' }),
+      expect.objectContaining({ transferId: 'aborted-before-start', status: 'cancelled', success: false }),
     );
     expect(send).not.toHaveBeenCalledWith(
       'transfer:complete',
@@ -292,10 +428,11 @@ describe('TransferService', () => {
     const send = vi.fn();
     const write = vi.fn();
     const end = vi.fn();
+    const destroy = vi.fn();
     const on = vi.fn((event: string, callback: () => void) => {
       if (event === 'finish') callback();
     });
-    createWriteStreamMock.mockReturnValue({ write, end, on });
+    createWriteStreamMock.mockReturnValue({ write, end, on, destroy });
 
     service.setWindow({ webContents: { send } } as never);
 
@@ -311,6 +448,7 @@ describe('TransferService', () => {
       fileName: 'file.txt',
       sourcePath: 'folder/file.txt',
       destinationPath: '/tmp/nested/file.txt',
+      tempPath: '/tmp/nested/file.txt.part',
       direction: 'download',
       connectionId: 'conn-1',
       connectionType: 's3',
@@ -325,9 +463,97 @@ describe('TransferService', () => {
     await internals.executeS3Transfer(item, { send: vi.fn().mockResolvedValue({ ContentLength: 5, Body: body }) });
 
     expect(mkdirMock).toHaveBeenCalledWith('/tmp/nested', { recursive: true });
+    expect(createWriteStreamMock).toHaveBeenCalledWith('/tmp/nested/file.txt.part');
     expect(write).toHaveBeenCalledTimes(2);
+    expect(renameMock).toHaveBeenCalledWith('/tmp/nested/file.txt.part', '/tmp/nested/file.txt');
+    expect(item.tempPath).toBeUndefined();
     expect(item.bytesTransferred).toBe(5);
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: 'download-1', totalBytes: 5 }));
+  });
+
+  it('removes only the partial download file when a download is cancelled', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+      async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
+        new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
+        }),
+    );
+
+    const id = await service.enqueue(
+      createRequest({
+        direction: 'download',
+        sourcePath: 'folder/file.txt',
+        destinationPath: '/tmp/downloads/file.txt',
+      }),
+      {} as never,
+    );
+    await flushQueue();
+
+    service.cancel(id);
+    await flushQueue();
+    await flushQueue();
+
+    expect(unlinkMock).toHaveBeenCalledWith('/tmp/downloads/file.txt.part');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
+    );
+  });
+
+  it('blocks concurrent cancellation cleanup for the same transfer', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    let releaseClose: (() => void) | undefined;
+    const closeSftpTransferClient = vi
+      .spyOn(service as never, 'closeSftpTransferClient')
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseClose = resolve;
+          }),
+      );
+    const cleanupCancelledDownload = vi
+      .spyOn(service as never, 'cleanupCancelledDownload')
+      .mockResolvedValue(undefined);
+    const cleanupTransferResources = vi
+      .spyOn(service as never, 'cleanupTransferResources')
+      .mockResolvedValue(undefined);
+    const emitComplete = vi.spyOn(service as never, 'emitComplete').mockImplementation(() => undefined);
+
+    const item: TransferItem = {
+      id: 'cancel-race',
+      fileName: 'demo.txt',
+      ...createRequest(),
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    const firstCancel = internals.cancelTransfer(item);
+    const secondCancel = internals.cancelTransfer(item);
+    await flushQueue();
+
+    expect(closeSftpTransferClient).toHaveBeenCalledTimes(1);
+    expect(cleanupCancelledDownload).not.toHaveBeenCalled();
+    expect(cleanupTransferResources).not.toHaveBeenCalled();
+    expect(emitComplete).not.toHaveBeenCalled();
+
+    releaseClose?.();
+    await Promise.all([firstCancel, secondCancel]);
+
+    expect(cleanupCancelledDownload).toHaveBeenCalledTimes(1);
+    expect(cleanupTransferResources).toHaveBeenCalledTimes(1);
+    expect(emitComplete).toHaveBeenCalledTimes(1);
+    expect(item.status).toBe('cancelled');
   });
 
   it('throws a clear error when an S3 download has no body stream', async () => {
@@ -340,6 +566,7 @@ describe('TransferService', () => {
       fileName: 'empty.txt',
       sourcePath: 'folder/empty.txt',
       destinationPath: '/tmp/empty.txt',
+      tempPath: '/tmp/empty.txt.part',
       direction: 'download',
       connectionId: 'conn-1',
       connectionType: 's3',
@@ -415,6 +642,7 @@ describe('TransferService', () => {
       fileName: 'archive.tgz',
       sourcePath: '/remote/archive.tgz',
       destinationPath: '/tmp/downloads/archive.tgz',
+      tempPath: '/tmp/downloads/archive.tgz.part',
       direction: 'download',
       connectionId: 'conn-1',
       connectionType: 'sftp',
@@ -429,9 +657,11 @@ describe('TransferService', () => {
 
     expect(mkdirMock).toHaveBeenCalledWith('/tmp/downloads', { recursive: true });
     expect(client.stat).toHaveBeenCalledWith('/remote/archive.tgz');
-    expect(client.fastGet).toHaveBeenCalledWith('/remote/archive.tgz', '/tmp/downloads/archive.tgz', expect.any(Object));
+    expect(client.fastGet).toHaveBeenCalledWith('/remote/archive.tgz', '/tmp/downloads/archive.tgz.part', expect.any(Object));
+    expect(renameMock).toHaveBeenCalledWith('/tmp/downloads/archive.tgz.part', '/tmp/downloads/archive.tgz');
     expect(item.size).toBe(42);
     expect(item.bytesTransferred).toBe(42);
+    expect(item.tempPath).toBeUndefined();
   });
 
   it('treats aborted SFTP downloads as cancelled even if fastGet resolves', async () => {
@@ -455,6 +685,7 @@ describe('TransferService', () => {
       fileName: 'archive.tgz',
       sourcePath: '/remote/archive.tgz',
       destinationPath: '/tmp/downloads/archive.tgz',
+      tempPath: '/tmp/downloads/archive.tgz.part',
       direction: 'download',
       connectionId: 'conn-1',
       connectionType: 'sftp',
