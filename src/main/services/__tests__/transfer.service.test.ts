@@ -33,17 +33,10 @@ type TransferServiceInternals = {
   emitProgress: (id: string, bytes: number, total: number, speed: number) => void;
   transfers: Map<string, TransferItem>;
   abortControllers: Map<string, AbortController>;
+  setSftpClientFactory: (factory: (connectionId: string) => Promise<unknown>) => void;
   executeTransfer: (
     item: TransferItem,
     s3Client?: { send: ReturnType<typeof vi.fn> },
-    sftpClient?: {
-      mkdir: ReturnType<typeof vi.fn>;
-      fastPut: ReturnType<typeof vi.fn>;
-      stat: ReturnType<typeof vi.fn>;
-      fastGet: ReturnType<typeof vi.fn>;
-      abort?: ReturnType<typeof vi.fn>;
-      disconnect?: ReturnType<typeof vi.fn>;
-    },
     signal?: AbortSignal,
   ) => Promise<void>;
   executeS3Transfer: (
@@ -245,6 +238,7 @@ describe('TransferService', () => {
   it('actively aborts dedicated SFTP clients when cancelling an active transfer', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
@@ -264,10 +258,11 @@ describe('TransferService', () => {
         }),
     );
 
+    internals.setSftpClientFactory(vi.fn(async () => client));
+
     const id = await service.enqueue(
       createRequest({ connectionType: 'sftp' }),
       undefined,
-      client as never,
     );
     await flushQueue();
 
@@ -281,6 +276,33 @@ describe('TransferService', () => {
       'transfer:complete',
       expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
     );
+  });
+
+  it('uses the SFTP client factory when an SFTP transfer starts', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const createClient = vi.fn(async () => ({
+      mkdir: vi.fn(),
+      fastPut: vi.fn(async (_source: string, _dest: string, options: { step: (a: number, b: number, c: number) => void }) => {
+        options.step(20, 20, 20);
+      }),
+      stat: vi.fn(),
+      fastGet: vi.fn(),
+      abort: vi.fn().mockResolvedValue(undefined),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    }));
+    statMock.mockResolvedValue({ size: 20 });
+
+    internals.setSftpClientFactory(createClient);
+
+    const id = await service.enqueue(createRequest({ connectionType: 'sftp' }));
+    await flushQueue();
+    await flushQueue();
+
+    expect(createClient).toHaveBeenCalledTimes(1);
+    expect(createClient).toHaveBeenCalledWith('conn-1');
+    expect(service.getTransfer(id)?.status).toBe('completed');
   });
 
   it('cancels queued transfers before they start', async () => {
@@ -364,7 +386,7 @@ describe('TransferService', () => {
       retryCount: 0,
     };
 
-    await internals.executeTransfer(item, {} as never, undefined, controller.signal);
+    await internals.executeTransfer(item, {} as never, controller.signal);
 
     expect(item.status).toBe('cancelled');
     expect(send).toHaveBeenCalledWith(

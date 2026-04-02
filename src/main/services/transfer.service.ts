@@ -15,6 +15,8 @@ import type {
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
 
+type SftpClientFactory = (connectionId: string) => Promise<SftpTransferClient>;
+
 class NonRetryableError extends Error {
   constructor(message: string) {
     super(message);
@@ -40,6 +42,7 @@ export class TransferService {
   private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private sftpClients: Map<string, SftpTransferClient> = new Map();
   private terminalTransfers: Set<string> = new Set();
+  private sftpClientFactory?: SftpClientFactory;
   private window: BrowserWindow | null = null;
 
   constructor(concurrency = 3) {
@@ -48,6 +51,10 @@ export class TransferService {
 
   setWindow(window: BrowserWindow): void {
     this.window = window;
+  }
+
+  setSftpClientFactory(factory: SftpClientFactory): void {
+    this.sftpClientFactory = factory;
   }
 
   getTransfers(): TransferItem[] {
@@ -61,7 +68,6 @@ export class TransferService {
   async enqueue(
     request: TransferRequest,
     s3Client?: S3Client,
-    sftpClient?: SftpTransferClient,
     size?: number,
   ): Promise<string> {
     const id = crypto.randomUUID();
@@ -81,9 +87,6 @@ export class TransferService {
 
     const controller = new AbortController();
     this.abortControllers.set(id, controller);
-    if (request.connectionType === 'sftp' && sftpClient) {
-      this.sftpClients.set(id, sftpClient);
-    }
 
     this.emitProgress(id, 0, 0, 0);
 
@@ -93,7 +96,7 @@ export class TransferService {
           await this.cancelTransfer(item);
           return;
         }
-        await this.executeTransfer(item, s3Client, sftpClient, controller.signal);
+        await this.executeTransfer(item, s3Client, controller.signal);
       })
       .catch(() => {
         // Queue errors handled in executeTransfer
@@ -105,7 +108,6 @@ export class TransferService {
   private async executeTransfer(
     item: TransferItem,
     s3Client?: S3Client,
-    sftpClient?: SftpTransferClient,
     signal?: AbortSignal,
   ): Promise<void> {
     if (signal?.aborted) {
@@ -124,7 +126,7 @@ export class TransferService {
         if (!s3Client) throw new NonRetryableError('S3 client is not connected');
         await this.executeS3Transfer(item, s3Client, signal, startTime);
       } else if (item.connectionType === 'sftp') {
-        if (!sftpClient) throw new NonRetryableError('SFTP client is not connected');
+        const sftpClient = await this.getOrCreateSftpTransferClient(item.id, item.connectionId);
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
       }
 
@@ -156,7 +158,7 @@ export class TransferService {
 
             this.queue
               .add(async () => {
-                await this.executeTransfer(item, s3Client, sftpClient, signal);
+                await this.executeTransfer(item, s3Client, signal);
               })
               .catch(() => undefined);
           }, delay);
@@ -439,6 +441,24 @@ export class TransferService {
 
     await rename(item.tempPath, item.destinationPath);
     item.tempPath = undefined;
+  }
+
+  private async getOrCreateSftpTransferClient(
+    id: string,
+    connectionId: string,
+  ): Promise<SftpTransferClient> {
+    const existingClient = this.sftpClients.get(id);
+    if (existingClient) {
+      return existingClient;
+    }
+
+    if (!this.sftpClientFactory) {
+      throw new NonRetryableError('SFTP client is not connected');
+    }
+
+    const client = await this.sftpClientFactory(connectionId);
+    this.sftpClients.set(id, client);
+    return client;
   }
 
   private async closeSftpTransferClient(
