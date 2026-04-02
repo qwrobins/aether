@@ -2,6 +2,7 @@ import SftpClient from 'ssh2-sftp-client';
 import { homedir } from 'node:os';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { SftpConnectionProfile } from '@shared/types/connection';
+import type { SftpTransferClient } from '@shared/types/transfer';
 
 function expandTilde(filePath: string): string {
   if (filePath.startsWith('~/') || filePath === '~') {
@@ -61,7 +62,7 @@ export class SftpService {
     return client;
   }
 
-  async createTransferClient(connectionId: string) {
+  async createTransferClient(connectionId: string): Promise<SftpTransferClient> {
     const profile = this.profiles.get(connectionId);
     if (!profile) throw new Error('Not connected');
 

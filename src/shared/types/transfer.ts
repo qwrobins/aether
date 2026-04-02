@@ -39,6 +39,23 @@ export interface TransferProgress {
   speed: number;
 }
 
+export interface SftpTransferClient {
+  mkdir: (path: string, recursive: boolean) => Promise<void>;
+  fastPut: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  stat: (path: string) => Promise<{ size: number }>;
+  fastGet: (
+    sourcePath: string,
+    destinationPath: string,
+    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
+  ) => Promise<void>;
+  abort?: () => Promise<void>;
+  disconnect?: () => Promise<void>;
+}
+
 export type TransferResult =
   | {
       transferId: string;

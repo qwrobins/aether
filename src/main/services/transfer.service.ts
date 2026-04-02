@@ -7,29 +7,13 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import type { Progress } from '@aws-sdk/lib-storage';
 import type {
+  SftpTransferClient,
   TransferItem,
   TransferRequest,
   TransferProgress,
   TransferResult,
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
-
-type SftpTransferClient = {
-  mkdir: (path: string, recursive: boolean) => Promise<void>;
-  fastPut: (
-    sourcePath: string,
-    destinationPath: string,
-    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
-  ) => Promise<void>;
-  stat: (path: string) => Promise<{ size: number }>;
-  fastGet: (
-    sourcePath: string,
-    destinationPath: string,
-    options: { step: (totalTransferred: number, chunk: number, total: number) => void },
-  ) => Promise<void>;
-  abort?: () => Promise<void>;
-  disconnect?: () => Promise<void>;
-};
 
 class NonRetryableError extends Error {
   constructor(message: string) {

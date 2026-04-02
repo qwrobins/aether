@@ -22,12 +22,10 @@ export function registerTransferHandlers(
   ipcMain.handle(
     IpcChannels.TRANSFER_START,
     async (_event, request: TransferRequest): Promise<string | TransferItem[]> => {
-      let s3Client, sftpClient;
+      let s3Client;
 
       if (request.connectionType === 's3') {
         s3Client = s3Service.getClient(request.connectionId);
-      } else if (request.connectionType === 'sftp') {
-        sftpClient = sftpService.getClient(request.connectionId);
       }
 
       const enqueueTransfer = async (
@@ -37,7 +35,7 @@ export function registerTransferHandlers(
         const transferSftpClient =
           transferRequest.connectionType === 'sftp'
             ? await sftpService.createTransferClient(transferRequest.connectionId)
-            : sftpClient;
+            : undefined;
 
         return transferService.enqueue(transferRequest, s3Client, transferSftpClient, size);
       };
