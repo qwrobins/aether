@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { IpcChannels } from '@shared/constants/channels';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useTransferStore } from '@/stores/transferStore';
@@ -218,7 +219,31 @@ export function LocalPanel() {
 
       {error && (
         <div className="px-3 py-2 text-[12px] text-destructive bg-destructive/5 border-b border-destructive/20">
-          {error}
+          {error.startsWith('MACOS_FDA_REQUIRED:') ? (
+            <span>
+              Full Disk Access required.{' '}
+              <button
+                type="button"
+                className="underline hover:no-underline transition-all duration-150 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                onClick={() => {
+                  void window.api
+                    .invoke(
+                      IpcChannels.SHELL_OPEN_EXTERNAL,
+                      'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+                    )
+                    .catch((err) => {
+                      toast.error(
+                        `Failed to open System Settings: ${err instanceof Error ? err.message : String(err)}`,
+                      );
+                    });
+                }}
+              >
+                Open System Settings
+              </button>
+            </span>
+          ) : (
+            error
+          )}
         </div>
       )}
 
