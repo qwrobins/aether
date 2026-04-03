@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import { IpcChannels } from '@shared/constants/channels';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useTransferStore } from '@/stores/transferStore';
@@ -222,13 +223,20 @@ export function LocalPanel() {
             <span>
               Full Disk Access required.{' '}
               <button
-                className="underline hover:no-underline"
-                onClick={() =>
-                  window.api.invoke(
-                    'shell:open-external',
-                    'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
-                  )
-                }
+                type="button"
+                className="underline hover:no-underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                onClick={() => {
+                  void window.api
+                    .invoke(
+                      IpcChannels.SHELL_OPEN_EXTERNAL,
+                      'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+                    )
+                    .catch((err) => {
+                      toast.error(
+                        `Failed to open System Settings: ${err instanceof Error ? err.message : String(err)}`,
+                      );
+                    });
+                }}
               >
                 Open System Settings
               </button>

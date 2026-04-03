@@ -63,11 +63,14 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
   );
 
   ipcMain.handle(IpcChannels.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
-    // Only allow safe URL schemes
-    if (!/^(https?|x-apple\.systempreferences):/.test(url)) {
-      throw new Error(`Blocked unsafe URL scheme: ${url}`);
+    if (typeof url !== 'string' || url.trim().length === 0) {
+      throw new Error('Invalid url: expected a non-empty string');
     }
-    await shell.openExternal(url);
+    const trimmedUrl = url.trim();
+    if (!/^(https?|x-apple\.systempreferences):/.test(trimmedUrl)) {
+      throw new Error(`Blocked unsafe URL scheme: ${trimmedUrl}`);
+    }
+    await shell.openExternal(trimmedUrl);
   });
 
   ipcMain.handle(
