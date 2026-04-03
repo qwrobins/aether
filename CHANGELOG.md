@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/qwrobins/aether/compare/v0.1.6...v0.1.7) (2026-04-03)
+
+
+### Bug Fixes
+
+* **macos:** add code signing and notarization to fix damaged-app error ([9af262a](https://github.com/qwrobins/aether/commit/9af262abda5516d6eb5e284afb33d2e87543027b))
+
 ## [0.1.6](https://github.com/qwrobins/aether/compare/v0.1.5...v0.1.6) (2026-04-02)
 
 
