@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/qwrobins/aether/compare/v0.1.7...v0.1.8) (2026-04-03)
+
+
+### Bug Fixes
+
+* **macos:** replace Full Disk Access prompt with native folder picker ([b71720c](https://github.com/qwrobins/aether/commit/b71720c57528ff9f98091d97d6d56858417feb45))
+* **macos:** replace Full Disk Access prompt with native folder picker ([9953ba3](https://github.com/qwrobins/aether/commit/9953ba3e676457b23e25adbbcd35f725cfbbfb61))
+
 ## [0.1.7](https://github.com/qwrobins/aether/compare/v0.1.6...v0.1.7) (2026-04-03)
 
 
