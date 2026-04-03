@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.7](https://github.com/qwrobins/aether/compare/v0.1.6...v0.1.7) (2026-04-03)
+
+
+### Bug Fixes
+
+* **macos:** add code signing and notarization to fix damaged-app error ([9af262a](https://github.com/qwrobins/aether/commit/9af262abda5516d6eb5e284afb33d2e87543027b))
+* **macos:** address CodeRabbit review feedback on shell:open-external ([1870553](https://github.com/qwrobins/aether/commit/1870553b7f087a3e0f07587c057c4f50f0f159c9))
+* **macos:** handle EPERM on protected folders with Full Disk Access prompt ([c131cb8](https://github.com/qwrobins/aether/commit/c131cb8fc622415aae15b95c11d78305df9a7599))
+* **macos:** handle EPERM on protected folders with Full Disk Access prompt ([3de0b33](https://github.com/qwrobins/aether/commit/3de0b33c1faf94e3695273cfbcfa8419d635f69f))
+
 ## [0.1.6](https://github.com/qwrobins/aether/compare/v0.1.5...v0.1.6) (2026-04-02)
 
 
