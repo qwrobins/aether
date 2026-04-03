@@ -29,6 +29,7 @@ export interface IpcInvokeMap {
 
   // Dialogs
   'dialog:open-file': { args: [options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }]; return: string | null };
+  'dialog:open-directory': { args: [defaultPath?: string]; return: string | null };
 
   // Shell
   'shell:open-external': { args: [url: string]; return: void };
