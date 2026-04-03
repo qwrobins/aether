@@ -11,6 +11,7 @@ interface LocalPanelState {
   sortDirection: SortDirection;
   isLoading: boolean;
   error: string | null;
+  blockedPath: string | null;
 
   navigateTo: (path: string) => Promise<void>;
   navigateUp: () => Promise<void>;
@@ -65,9 +66,10 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
   sortDirection: 'asc',
   isLoading: false,
   error: null,
+  blockedPath: null,
 
   navigateTo: async (path: string) => {
-    set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
+    set({ isLoading: true, error: null, blockedPath: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
       const listing = await window.api.invoke('fs:read-dir', path);
       const { sortField, sortDirection } = get();
@@ -77,8 +79,11 @@ export const useLocalPanelStore = create<LocalPanelState>((set, get) => ({
         isLoading: false,
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to read directory';
+      const isEperm = message.startsWith('MACOS_EPERM:');
       set({
-        error: err instanceof Error ? err.message : 'Failed to read directory',
+        error: message,
+        blockedPath: isEperm ? message.slice('MACOS_EPERM:'.length) : null,
         isLoading: false,
       });
     }

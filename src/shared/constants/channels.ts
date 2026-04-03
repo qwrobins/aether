@@ -44,6 +44,7 @@ export const IpcChannels = {
 
   // Dialogs
   DIALOG_OPEN_FILE: 'dialog:open-file',
+  DIALOG_OPEN_DIRECTORY: 'dialog:open-directory',
 
   // Shell
   SHELL_OPEN_EXTERNAL: 'shell:open-external',

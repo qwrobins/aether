@@ -15,10 +15,7 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
         err instanceof Error &&
         (err as NodeJS.ErrnoException).code === 'EPERM'
       ) {
-        throw new Error(
-          'MACOS_FDA_REQUIRED: Aether needs Full Disk Access to read this folder. ' +
-          'Open System Settings → Privacy & Security → Full Disk Access and enable Aether.',
-        );
+        throw new Error(`MACOS_EPERM:${path}`);
       }
       throw err;
     }
@@ -71,6 +68,19 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
       throw new Error(`Blocked unsafe URL scheme: ${trimmedUrl}`);
     }
     await shell.openExternal(trimmedUrl);
+  });
+
+  ipcMain.handle(IpcChannels.DIALOG_OPEN_DIRECTORY, async (_event, defaultPath?: string) => {
+    const parentWindow = BrowserWindow.getFocusedWindow();
+    const result = await dialog.showOpenDialog(
+      ...(parentWindow ? [parentWindow] : []),
+      {
+        title: 'Select Folder',
+        defaultPath,
+        properties: ['openDirectory', 'createDirectory'],
+      },
+    );
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
   });
 
   ipcMain.handle(

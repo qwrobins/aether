@@ -18,6 +18,7 @@ export function LocalPanel() {
     selectedFiles,
     isLoading,
     error,
+    blockedPath,
     sortField,
     sortDirection,
     viewMode,
@@ -219,26 +220,26 @@ export function LocalPanel() {
 
       {error && (
         <div className="px-3 py-2 text-[12px] text-destructive bg-destructive/5 border-b border-destructive/20">
-          {error.startsWith('MACOS_FDA_REQUIRED:') ? (
+          {blockedPath ? (
             <span>
-              Full Disk Access required.{' '}
+              macOS blocked access to this folder.{' '}
               <button
                 type="button"
                 className="underline hover:no-underline transition-all duration-150 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
                 onClick={() => {
                   void window.api
-                    .invoke(
-                      IpcChannels.SHELL_OPEN_EXTERNAL,
-                      'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
-                    )
+                    .invoke(IpcChannels.DIALOG_OPEN_DIRECTORY, blockedPath)
+                    .then((selected) => {
+                      if (selected) navigateTo(selected);
+                    })
                     .catch((err) => {
                       toast.error(
-                        `Failed to open System Settings: ${err instanceof Error ? err.message : String(err)}`,
+                        `Could not open folder picker: ${err instanceof Error ? err.message : String(err)}`,
                       );
                     });
                 }}
               >
-                Open System Settings
+                Grant Access
               </button>
             </span>
           ) : (
