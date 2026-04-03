@@ -111,6 +111,14 @@ Creates distributable installers. Configured makers:
 | macOS | ZIP |
 | Linux | DEB, RPM, AppImage |
 
+### macOS — "App is Damaged" Warning
+
+macOS will block the app with a "damaged" error because the build is unsigned. Run this once in Terminal after installing:
+
+```bash
+xattr -cr /Applications/Aether.app
+```
+
 ### Install AppImage (Linux)
 
 After building, install the latest AppImage into your applications menu:
