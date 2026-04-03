@@ -224,7 +224,7 @@ export function LocalPanel() {
               Full Disk Access required.{' '}
               <button
                 type="button"
-                className="underline hover:no-underline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                className="underline hover:no-underline transition-all duration-150 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
                 onClick={() => {
                   void window.api
                     .invoke(
