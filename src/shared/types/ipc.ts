@@ -30,6 +30,9 @@ export interface IpcInvokeMap {
   // Dialogs
   'dialog:open-file': { args: [options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }]; return: string | null };
 
+  // Shell
+  'shell:open-external': { args: [url: string]; return: void };
+
   // Connections
   'conn:save': { args: [profile: ConnectionProfile]; return: string };
   'conn:delete': { args: [id: string]; return: void };

@@ -1,4 +1,5 @@
-import { type IpcMain, dialog, BrowserWindow } from 'electron';
+import { type IpcMain, dialog, shell, BrowserWindow } from 'electron';
+import { platform } from 'node:os';
 import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
 
@@ -6,7 +7,21 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
   const fs = new FilesystemService();
 
   ipcMain.handle(IpcChannels.FS_READ_DIR, async (_event, path: string) => {
-    return fs.readDirectory(path);
+    try {
+      return await fs.readDirectory(path);
+    } catch (err) {
+      if (
+        platform() === 'darwin' &&
+        err instanceof Error &&
+        (err as NodeJS.ErrnoException).code === 'EPERM'
+      ) {
+        throw new Error(
+          'MACOS_FDA_REQUIRED: Aether needs Full Disk Access to read this folder. ' +
+          'Open System Settings → Privacy & Security → Full Disk Access and enable Aether.',
+        );
+      }
+      throw err;
+    }
   });
 
   ipcMain.handle(IpcChannels.FS_STAT, async (_event, path: string) => {
@@ -46,6 +61,14 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
       fs.openInExplorer(path);
     },
   );
+
+  ipcMain.handle(IpcChannels.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
+    // Only allow safe URL schemes
+    if (!/^(https?|x-apple\.systempreferences):/.test(url)) {
+      throw new Error(`Blocked unsafe URL scheme: ${url}`);
+    }
+    await shell.openExternal(url);
+  });
 
   ipcMain.handle(
     IpcChannels.DIALOG_OPEN_FILE,

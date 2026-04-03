@@ -218,7 +218,24 @@ export function LocalPanel() {
 
       {error && (
         <div className="px-3 py-2 text-[12px] text-destructive bg-destructive/5 border-b border-destructive/20">
-          {error}
+          {error.startsWith('MACOS_FDA_REQUIRED:') ? (
+            <span>
+              Full Disk Access required.{' '}
+              <button
+                className="underline hover:no-underline"
+                onClick={() =>
+                  window.api.invoke(
+                    'shell:open-external',
+                    'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles',
+                  )
+                }
+              >
+                Open System Settings
+              </button>
+            </span>
+          ) : (
+            error
+          )}
         </div>
       )}
 
