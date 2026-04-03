@@ -80,19 +80,6 @@ const config: ForgeConfig = {
     executableName: 'aether',
     icon: path.resolve(__dirname, 'assets/icon'),
     afterCopy: [copyExternalModules],
-    ...(process.env.APPLE_IDENTITY
-      ? {
-          osxSign: {
-            identity: process.env.APPLE_IDENTITY,
-          },
-          osxNotarize: {
-            tool: 'notarytool' as const,
-            appleId: process.env.APPLE_ID!,
-            appleIdPassword: process.env.APPLE_APP_SPECIFIC_PASSWORD!,
-            teamId: process.env.APPLE_TEAM_ID!,
-          },
-        }
-      : {}),
   },
   rebuildConfig: {},
   makers: [
