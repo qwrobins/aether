@@ -44,6 +44,20 @@ export interface SftpConnectionProfile extends BaseConnectionProfile {
 
 export type ConnectionProfile = S3ConnectionProfile | SftpConnectionProfile;
 
+export type RedactedS3ConnectionProfile = Omit<
+  S3ConnectionProfile,
+  'accessKeyId' | 'secretAccessKey' | 'sourceAccessKeyId' | 'sourceSecretAccessKey'
+>;
+
+export type RedactedSftpConnectionProfile = Omit<
+  SftpConnectionProfile,
+  'password' | 'passphrase'
+>;
+
+export type RedactedConnectionProfile =
+  | RedactedS3ConnectionProfile
+  | RedactedSftpConnectionProfile;
+
 export interface ActiveConnection {
   id: string;
   profile: ConnectionProfile;
