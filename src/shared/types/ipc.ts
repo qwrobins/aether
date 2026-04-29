@@ -1,5 +1,5 @@
 import type { FileEntry, DirectoryListing, DriveInfo } from './filesystem';
-import type { ConnectionProfile } from './connection';
+import type { ConnectionProfile, RedactedConnectionProfile } from './connection';
 import type { TransferRequest, TransferItem, TransferProgress, TransferResult } from './transfer';
 
 export interface IpcInvokeMap {
@@ -37,7 +37,7 @@ export interface IpcInvokeMap {
   // Connections
   'conn:save': { args: [profile: ConnectionProfile]; return: string };
   'conn:delete': { args: [id: string]; return: void };
-  'conn:list': { args: []; return: ConnectionProfile[] };
+  'conn:list': { args: []; return: RedactedConnectionProfile[] };
   'conn:test': { args: [profile: ConnectionProfile]; return: boolean };
   'conn:connect': { args: [id: string]; return: { status: string } };
   'conn:disconnect': { args: [id: string]; return: void };
@@ -47,6 +47,11 @@ export interface IpcInvokeMap {
   'transfer:cancel': { args: [transferId: string]; return: void };
   'transfer:clear': { args: []; return: void };
   'transfer:list': { args: []; return: TransferItem[] };
+
+  // Window controls
+  'window:close': { args: []; return: void };
+  'window:minimize': { args: []; return: void };
+  'window:maximize': { args: []; return: void };
 }
 
 export interface IpcEventMap {

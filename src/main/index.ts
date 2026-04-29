@@ -1,5 +1,6 @@
 import { app, BrowserWindow, nativeImage } from 'electron';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { registerAllIpcHandlers } from './ipc';
 
@@ -19,6 +20,32 @@ if (started) {
 
 let mainWindow: BrowserWindow | null = null;
 
+function getRendererIndexPath(): string {
+  return path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+}
+
+function isAllowedAppNavigation(url: string): boolean {
+  if (url === pathToFileURL(getRendererIndexPath()).toString()) return true;
+  if (!MAIN_WINDOW_VITE_DEV_SERVER_URL) return false;
+
+  try {
+    const candidateUrl = new URL(url);
+    const devServerUrl = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    return candidateUrl.origin === devServerUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+function formatUrlForSecurityLog(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    return `${parsedUrl.origin}${parsedUrl.pathname}`;
+  } catch {
+    return '<invalid-url>';
+  }
+}
+
 const createWindow = () => {
   console.log('[Aether] Creating window...');
 
@@ -35,7 +62,27 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isAllowedAppNavigation(url)) {
+      console.warn(`[Aether] Blocked renderer navigation to ${formatUrlForSecurityLog(url)}`);
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    if (!isAllowedAppNavigation(url)) {
+      console.warn(`[Aether] Blocked renderer redirect to ${formatUrlForSecurityLog(url)}`);
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.warn(`[Aether] Blocked renderer window open to ${formatUrlForSecurityLog(url)}`);
+    return { action: 'deny' };
   });
 
   mainWindow.once('ready-to-show', () => {
@@ -54,9 +101,7 @@ const createWindow = () => {
     console.log('[Aether] Loading dev server:', MAIN_WINDOW_VITE_DEV_SERVER_URL);
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    mainWindow.loadFile(getRendererIndexPath());
   }
 
   mainWindow.on('closed', () => {

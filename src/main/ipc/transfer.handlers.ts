@@ -1,4 +1,5 @@
 import { IpcMain, BrowserWindow } from 'electron';
+import path from 'node:path';
 import { TransferService } from '../services/transfer.service';
 import { FilesystemService } from '../services/filesystem.service';
 import { s3Service } from './s3.handlers';
@@ -8,6 +9,55 @@ import type { TransferRequest, TransferItem } from '@shared/types/transfer';
 
 const transferService = new TransferService();
 const fs = new FilesystemService();
+const WINDOWS_ROOT_PATTERN = /^[A-Za-z]:[\\/]?$/;
+
+function isWindowsRootPath(filePath: string): boolean {
+  return WINDOWS_ROOT_PATTERN.test(filePath);
+}
+
+function getDownloadDestinationBase(destinationPath: string): string {
+  const trimmedPath = destinationPath.trim();
+  if (trimmedPath === '/' || isWindowsRootPath(trimmedPath)) {
+    return trimmedPath;
+  }
+  return trimmedPath.replace(/[\\/]+$/, '');
+}
+
+function assertSafeRemoteRelativePath(relativePath: string): void {
+  if (relativePath.length === 0) {
+    throw new Error('Remote path expansion produced an empty destination path');
+  }
+
+  if (path.posix.isAbsolute(relativePath) || path.win32.isAbsolute(relativePath)) {
+    throw new Error(`Remote path is absolute and cannot be downloaded safely: ${relativePath}`);
+  }
+
+  const segments = relativePath.split(/[\\/]+/);
+  if (segments.some((segment) => segment === '..')) {
+    throw new Error(`Remote path escapes the destination directory: ${relativePath}`);
+  }
+}
+
+function safeJoinDownloadDestination(basePath: string, relativePath: string): string {
+  assertSafeRemoteRelativePath(relativePath);
+
+  const pathApi = isWindowsRootPath(basePath) ? path.win32 : path;
+  const resolvedBase = pathApi.resolve(basePath);
+  const resolvedDestination = pathApi.resolve(resolvedBase, ...relativePath.split(/[\\/]+/));
+  const relativeToBase = pathApi.relative(resolvedBase, resolvedDestination);
+  const normalizedRelativeSegments = pathApi.normalize(relativeToBase).split(pathApi.sep);
+
+  if (
+    relativeToBase === '' ||
+    relativeToBase === '..' ||
+    normalizedRelativeSegments[0] === '..' ||
+    pathApi.isAbsolute(relativeToBase)
+  ) {
+    throw new Error(`Remote path escapes the destination directory: ${relativePath}`);
+  }
+
+  return resolvedDestination;
+}
 
 function validateTransferRequest(request: TransferRequest) {
   if (!request.connectionId || typeof request.connectionId !== 'string') {
@@ -129,11 +179,12 @@ export function registerTransferHandlers(
             if (files.length > 0) {
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
-              const destBase = request.destinationPath.replace(/\/$/, '');
+              const destBase = getDownloadDestinationBase(request.destinationPath);
               try {
                 for (const { key, size } of files) {
                   const relativePath = key.slice(prefix.length);
-                  const subDest = `${destBase}/${relativePath}`;
+                  if (relativePath.trim() === '') continue;
+                  const subDest = safeJoinDownloadDestination(destBase, relativePath);
                   const subRequest: TransferRequest = { ...request, sourcePath: key, destinationPath: subDest };
                   const transfer = await enqueueTransferItem(subRequest, transferIds, size);
                   items.push(transfer);
@@ -153,10 +204,11 @@ export function registerTransferHandlers(
               if (files.length === 0) return [];
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
-              const destBase = request.destinationPath.replace(/\/$/, '');
+              const destBase = getDownloadDestinationBase(request.destinationPath);
               try {
                 for (const { path: remotePath, relativePath, size } of files) {
-                  const subDest = `${destBase}/${relativePath}`;
+                  if (relativePath == null || relativePath.trim() === '') continue;
+                  const subDest = safeJoinDownloadDestination(destBase, relativePath);
                   const subRequest: TransferRequest = { ...request, sourcePath: remotePath, destinationPath: subDest };
                   const transfer = await enqueueTransferItem(subRequest, transferIds, size);
                   items.push(transfer);

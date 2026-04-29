@@ -60,7 +60,30 @@ describe('ConnectionService', () => {
     expect(saved.secretAccessKey).not.toBe('secret-123');
   });
 
-  it('decrypts stored profiles when listing and reading by id', async () => {
+  it('encrypts IAM role source credentials when saving a profile', async () => {
+    readStore.mockReturnValue({ connections: [] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+    const profile = {
+      name: 'Assume Role',
+      type: 's3',
+      region: 'us-east-1',
+      authMethod: 'iam-role',
+      roleArn: 'arn:aws:iam::123456789012:role/AetherRole',
+      sourceAccessKeyId: 'SOURCEKEY',
+      sourceSecretAccessKey: 'source-secret',
+    } as S3ConnectionProfile;
+
+    service.save(profile);
+
+    expect(encryptString).toHaveBeenCalledTimes(2);
+    const saved = writeStore.mock.calls[0][0].connections[0] as S3ConnectionProfile;
+    expect(saved.sourceAccessKeyId).not.toBe('SOURCEKEY');
+    expect(saved.sourceSecretAccessKey).not.toBe('source-secret');
+  });
+
+  it('redacts stored profiles when listing and decrypts when reading by id', async () => {
     const encryptedProfile = {
       id: 'conn-1',
       name: 'Remote Host',
@@ -79,7 +102,7 @@ describe('ConnectionService', () => {
     const { ConnectionService } = await import('../connection.service');
     const service = new ConnectionService();
 
-    expect((service.list()[0] as SftpConnectionProfile).password).toBe('hunter2');
+    expect((service.list()[0] as SftpConnectionProfile).password).toBeUndefined();
     expect((service.getById('conn-1') as SftpConnectionProfile | undefined)?.password).toBe('hunter2');
     expect(decryptString).toHaveBeenCalled();
   });
@@ -115,5 +138,122 @@ describe('ConnectionService', () => {
     expect(saved.createdAt).toBe('2026-03-07T10:00:00.000Z');
     expect(saved.updatedAt).not.toBe('2026-03-07T10:00:00.000Z');
     expect(saved.name).toBe('Updated');
+  });
+
+  it('preserves existing secrets when updating redacted profile fields', async () => {
+    const existing = {
+      id: 'conn-3',
+      name: 'Existing',
+      type: 's3',
+      region: 'us-east-1',
+      authMethod: 'iam-role',
+      roleArn: 'arn:aws:iam::123456789012:role/AetherRole',
+      sourceAccessKeyId: Buffer.from('enc:source-key').toString('base64'),
+      sourceSecretAccessKey: Buffer.from('enc:source-secret').toString('base64'),
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    } as S3ConnectionProfile;
+
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+    service.save({
+      ...service.list()[0],
+      name: 'Renamed',
+    });
+
+    const saved = writeStore.mock.calls[0][0].connections[0] as S3ConnectionProfile;
+    expect(saved.name).toBe('Renamed');
+    expect(saved.sourceAccessKeyId).not.toBeUndefined();
+    expect(saved.sourceSecretAccessKey).not.toBeUndefined();
+    expect(decryptString).toHaveBeenCalled();
+    expect(encryptString).toHaveBeenCalledWith('source-key');
+    expect(encryptString).toHaveBeenCalledWith('source-secret');
+  });
+
+  it('re-encrypts stored secrets before preserving them when decryption fails', async () => {
+    const existing = {
+      id: 'conn-bad-secret',
+      name: 'Existing',
+      type: 'sftp',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      authMethod: 'password',
+      password: Buffer.from('enc:hunter2').toString('base64'),
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    } as SftpConnectionProfile;
+
+    decryptString.mockImplementationOnce(() => {
+      throw new Error('decrypt failed');
+    });
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+    service.save({
+      ...service.list()[0],
+      name: 'Renamed',
+    });
+
+    const saved = writeStore.mock.calls[0][0].connections[0] as SftpConnectionProfile;
+    expect(saved.password).not.toBe(existing.password);
+    expect(encryptString).toHaveBeenCalledWith(existing.password);
+    expect(encryptString).not.toHaveBeenCalledWith('hunter2');
+  });
+
+  it('still returns legacy plaintext secrets from getById when decryption fails', async () => {
+    const existing = {
+      id: 'conn-legacy',
+      name: 'Legacy',
+      type: 'sftp',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      authMethod: 'password',
+      password: 'legacy-secret',
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    } as SftpConnectionProfile;
+
+    decryptString.mockImplementationOnce(() => {
+      throw new Error('decrypt failed');
+    });
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect((service.getById('conn-legacy') as SftpConnectionProfile | undefined)?.password).toBe('legacy-secret');
+  });
+
+  it('clears existing secrets when updating with empty string fields', async () => {
+    const existing = {
+      id: 'conn-4',
+      name: 'Existing',
+      type: 'sftp',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      authMethod: 'password',
+      password: Buffer.from('enc:hunter2').toString('base64'),
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    } as SftpConnectionProfile;
+
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+    service.save({
+      ...service.list()[0],
+      password: '',
+    } as SftpConnectionProfile);
+
+    const saved = writeStore.mock.calls[0][0].connections[0] as SftpConnectionProfile;
+    expect(saved.password).toBe('');
+    expect(encryptString).not.toHaveBeenCalledWith('hunter2');
   });
 });

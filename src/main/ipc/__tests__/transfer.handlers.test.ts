@@ -78,6 +78,19 @@ function createRequest(overrides: Partial<TransferRequest> = {}): TransferReques
   };
 }
 
+async function createIpcHandlerSetup() {
+  const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
+  const ipcMain = {
+    handle: vi.fn((
+      channel: string,
+      handler: (...args: unknown[]) => Promise<unknown>,
+    ) => handlers.set(channel, handler)),
+  };
+  const { registerTransferHandlers } = await import('../transfer.handlers');
+  registerTransferHandlers(ipcMain as never, {} as never);
+  return { handlers, ipcMain };
+}
+
 describe('registerTransferHandlers', () => {
   beforeEach(() => {
     transferItems.clear();
@@ -92,7 +105,8 @@ describe('registerTransferHandlers', () => {
     listFilesRecursive.mockReset();
     listObjectKeysRecursive.mockReset();
     getS3Client.mockClear();
-    getSftpClient.mockClear();
+    getSftpClient.mockReset();
+    getSftpClient.mockImplementation(() => ({ kind: 'sftp-client', stat: vi.fn() }));
     listSftpFilesRecursive.mockReset();
   });
 
@@ -103,10 +117,7 @@ describe('registerTransferHandlers', () => {
       { path: '/tmp/source/nested/b.txt', relativePath: 'nested/b.txt' },
     ]);
 
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
-    const { registerTransferHandlers } = await import('../transfer.handlers');
-    registerTransferHandlers(ipcMain as never, {} as never);
+    const { handlers } = await createIpcHandlerSetup();
 
     const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '/tmp/source', destinationPath: '/remote/base/' }));
 
@@ -129,10 +140,7 @@ describe('registerTransferHandlers', () => {
       { key: 'photos/2026/nested/b.jpg', size: 30 },
     ]);
 
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
-    const { registerTransferHandlers } = await import('../transfer.handlers');
-    registerTransferHandlers(ipcMain as never, {} as never);
+    const { handlers } = await createIpcHandlerSetup();
 
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
@@ -151,6 +159,133 @@ describe('registerTransferHandlers', () => {
     expect(enqueue.mock.calls[1][2]).toBe(30);
   });
 
+  it('skips S3 directory marker entries during prefix downloads', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026/', size: 0 },
+      { key: 'photos/2026/a.jpg', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 's3',
+      sourcePath: 'photos/2026',
+      destinationPath: '/downloads/photos/',
+      bucket: 'images',
+    }));
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      sourcePath: 'photos/2026/a.jpg',
+      destinationPath: '/downloads/photos/a.jpg',
+    });
+  });
+
+  it('allows safe remote names that start with two dots', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026/..env/file.txt', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 's3',
+      sourcePath: 'photos/2026',
+      destinationPath: '/downloads/photos/',
+      bucket: 'images',
+    }));
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      sourcePath: 'photos/2026/..env/file.txt',
+      destinationPath: '/downloads/photos/..env/file.txt',
+    });
+  });
+
+  it('preserves POSIX root destinations during S3 directory downloads', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026/a.jpg', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 's3',
+      sourcePath: 'photos/2026',
+      destinationPath: '/',
+      bucket: 'images',
+    }));
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      destinationPath: '/a.jpg',
+    });
+  });
+
+  it('preserves Windows root destinations during S3 directory downloads', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026/a.jpg', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 's3',
+      sourcePath: 'photos/2026',
+      destinationPath: 'C:/',
+      bucket: 'images',
+    }));
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      destinationPath: 'C:\\a.jpg',
+    });
+  });
+
+  it('rejects S3 directory downloads that escape the local destination', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026/../secrets.txt', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 's3',
+        sourcePath: 'photos/2026',
+        destinationPath: '/downloads/photos/',
+        bucket: 'images',
+      })),
+    ).rejects.toThrow('Directory download queueing failed: Remote path escapes the destination directory');
+
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects absolute remote paths during S3 directory downloads', async () => {
+    listObjectKeysRecursive.mockResolvedValue([
+      { key: 'photos/2026//tmp/secrets.txt', size: 12 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 's3',
+        sourcePath: 'photos/2026',
+        destinationPath: '/downloads/photos/',
+        bucket: 'images',
+      })),
+    ).rejects.toThrow('Directory download queueing failed: Remote path is absolute');
+
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('expands SFTP directory downloads into nested destinations', async () => {
     const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
     getSftpClient.mockReturnValue(client);
@@ -159,10 +294,7 @@ describe('registerTransferHandlers', () => {
       { path: '/remote/root/deep/asset.bin', relativePath: 'deep/asset.bin', size: 8 },
     ]);
 
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
-    const { registerTransferHandlers } = await import('../transfer.handlers');
-    registerTransferHandlers(ipcMain as never, {} as never);
+    const { handlers } = await createIpcHandlerSetup();
 
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
@@ -181,6 +313,51 @@ describe('registerTransferHandlers', () => {
       sourcePath: '/remote/root/deep/asset.bin',
       destinationPath: '/local/root/deep/asset.bin',
     });
+  });
+
+  it('skips SFTP directory marker entries during directory downloads', async () => {
+    const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    getSftpClient.mockReturnValue(client);
+    listSftpFilesRecursive.mockResolvedValue([
+      { path: '/remote/root', relativePath: '   ', size: 0 },
+      { path: '/remote/root/file.txt', relativePath: 'file.txt', size: 4 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 'sftp',
+      sourcePath: '/remote/root',
+      destinationPath: '/local/root/',
+    }));
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      sourcePath: '/remote/root/file.txt',
+      destinationPath: '/local/root/file.txt',
+    });
+  });
+
+  it('rejects SFTP directory downloads with separator traversal', async () => {
+    const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    getSftpClient.mockReturnValue(client);
+    listSftpFilesRecursive.mockResolvedValue([
+      { path: '/remote/root/escape.txt', relativePath: 'deep\\..\\escape.txt', size: 4 },
+    ]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 'sftp',
+        sourcePath: '/remote/root',
+        destinationPath: '/local/root/',
+      })),
+    ).rejects.toThrow('Directory download queueing failed: Remote path escapes the destination directory');
+
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it('throws a clear IPC error and rolls back queued children when directory expansion enqueue fails', async () => {
@@ -206,10 +383,7 @@ describe('registerTransferHandlers', () => {
       })
       .mockRejectedValueOnce(new Error('SFTP client is not connected'));
 
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
-    const { registerTransferHandlers } = await import('../transfer.handlers');
-    registerTransferHandlers(ipcMain as never, {} as never);
+    const { handlers } = await createIpcHandlerSetup();
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ sourcePath: '/tmp/source', destinationPath: '/remote/base/' })),
@@ -220,10 +394,7 @@ describe('registerTransferHandlers', () => {
   });
 
   it('validates transfer requests before queueing work', async () => {
-    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
-    const ipcMain = { handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => handlers.set(channel, handler)) };
-    const { registerTransferHandlers } = await import('../transfer.handlers');
-    registerTransferHandlers(ipcMain as never, {} as never);
+    const { handlers } = await createIpcHandlerSetup();
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionId: '' as never })),
