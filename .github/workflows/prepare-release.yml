@@ -1,0 +1,72 @@
+name: Prepare Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: prepare-release-main
+  cancel-in-progress: false
+
+jobs:
+  prepare-release:
+    name: Version, changelog, and tag
+    runs-on: ubuntu-22.04
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    steps:
+      - name: Verify release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "RELEASE_TOKEN is required so pushed release tags trigger the Release workflow." >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # This must be a PAT or GitHub App token. Tags pushed with github.token
+          # do not trigger release.yml, so RELEASE_TOKEN is required.
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare release metadata
+        id: prepare
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: npm run release:prepare
+
+      - name: Commit release metadata
+        if: steps.prepare.outputs.released == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json CHANGELOG.md
+          if [ -f .release-please-manifest.json ]; then
+            git add .release-please-manifest.json
+          fi
+          git commit -m "chore(release): aether ${{ steps.prepare.outputs.version }}"
+
+      - name: Tag release
+        if: steps.prepare.outputs.released == 'true'
+        run: git tag "v${{ steps.prepare.outputs.version }}"
+
+      - name: Push release commit and tag
+        if: steps.prepare.outputs.released == 'true'
+        run: git push origin HEAD:main "v${{ steps.prepare.outputs.version }}"

@@ -20,6 +20,7 @@
     "sourceType": "module"
   },
   "settings": {
+    "import/ignore": ["node_modules"],
     "import/resolver": {
       "typescript": {
         "project": "./tsconfig.json"

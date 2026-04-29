@@ -11,6 +11,7 @@
     "make": "electron-forge make",
     "install:appimage": "bash ./scripts/install-appimage.sh",
     "publish": "electron-forge publish",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
