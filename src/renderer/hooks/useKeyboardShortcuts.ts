@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { usePromptStore } from '@/stores/promptStore';
+import { getSftpDeleteErrorMessage } from '@/lib/remote';
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -58,7 +59,14 @@ export function useKeyboardShortcuts() {
             if (confirm(`Delete ${paths.length} remote item(s)?`)) {
               window.api
                 .invoke('sftp:delete', remoteStore.activeConnectionId, paths)
-                .then(() => remoteStore.refresh())
+                .then((result) =>
+                  remoteStore.refresh().then(() => {
+                    const message = getSftpDeleteErrorMessage(result);
+                    if (message) {
+                      toast.error(message);
+                    }
+                  }),
+                )
                 .catch((err) => {
                   console.error('[Aether] SFTP delete failed:', err);
                   toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);

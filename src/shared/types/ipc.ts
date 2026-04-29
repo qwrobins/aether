@@ -1,6 +1,12 @@
 import type { FileEntry, DirectoryListing, DriveInfo } from './filesystem';
 import type { ConnectionProfile, RedactedConnectionProfile } from './connection';
-import type { TransferRequest, TransferItem, TransferProgress, TransferResult } from './transfer';
+import type {
+  TransferRequest,
+  TransferItem,
+  TransferProgress,
+  TransferResult,
+  SftpDeleteResult,
+} from './transfer';
 
 export interface IpcInvokeMap {
   'fs:read-dir': { args: [path: string]; return: DirectoryListing };
@@ -24,7 +30,7 @@ export interface IpcInvokeMap {
   // SFTP
   'sftp:list': { args: [connectionId: string, path: string]; return: DirectoryListing };
   'sftp:mkdir': { args: [connectionId: string, path: string]; return: void };
-  'sftp:delete': { args: [connectionId: string, paths: string[]]; return: void };
+  'sftp:delete': { args: [connectionId: string, paths: string[]]; return: SftpDeleteResult };
   'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
 
   // Dialogs

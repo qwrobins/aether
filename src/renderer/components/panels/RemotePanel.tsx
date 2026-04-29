@@ -4,6 +4,7 @@ import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTransferStore } from '@/stores/transferStore';
 import { usePromptStore } from '@/stores/promptStore';
+import { getSftpDeleteErrorMessage } from '@/lib/remote';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
@@ -232,7 +233,14 @@ export function RemotePanel() {
       } else if (activeProfile.type === 'sftp') {
         window.api
           .invoke('sftp:delete', activeConnectionId, paths)
-          .then(() => refresh())
+          .then((result) =>
+            refresh().then(() => {
+              const message = getSftpDeleteErrorMessage(result);
+              if (message) {
+                toast.error(message);
+              }
+            }),
+          )
           .catch((err) => {
             console.error('[Aether] SFTP delete failed:', err);
             toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);

@@ -56,6 +56,18 @@ export interface SftpTransferClient {
   disconnect?: () => Promise<void>;
 }
 
+export interface SftpDeletePathResult {
+  path: string;
+  success: boolean;
+  error?: string;
+}
+
+export interface SftpDeleteResult {
+  results: SftpDeletePathResult[];
+  deletedCount: number;
+  failedCount: number;
+}
+
 export type TransferResult =
   | {
       transferId: string;

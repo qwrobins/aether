@@ -15,6 +15,16 @@ import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/files
 
 const execFileAsync = promisify(execFile);
 
+interface RecursiveListOptions {
+  maxFiles?: number;
+}
+
+function assertRecursiveLimit(count: number, maxFiles: number | undefined): void {
+  if (maxFiles !== undefined && count > maxFiles) {
+    throw new Error(`Directory expansion exceeded the safe limit of ${maxFiles} files`);
+  }
+}
+
 export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
@@ -58,22 +68,39 @@ export class FilesystemService {
     };
   }
 
-  /** Recursively list all files (not directories) under a path. Returns full paths. */
-  async listFilesRecursive(dirPath: string): Promise<Array<{ path: string; relativePath: string }>> {
-    const results: Array<{ path: string; relativePath: string }> = [];
-    const walk = async (currentDir: string, relativePrefix: string) => {
+  async *walkFilesRecursive(
+    dirPath: string,
+    options: RecursiveListOptions = {},
+  ): AsyncGenerator<{ path: string; relativePath: string }> {
+    let fileCount = 0;
+
+    const walk = async function* (
+      currentDir: string,
+      relativePrefix: string,
+    ): AsyncGenerator<{ path: string; relativePath: string }> {
       const dirents = await readdir(currentDir, { withFileTypes: true });
       for (const dirent of dirents) {
         const fullPath = join(currentDir, dirent.name);
         const relativePath = relativePrefix ? `${relativePrefix}/${dirent.name}` : dirent.name;
         if (dirent.isDirectory()) {
-          await walk(fullPath, relativePath);
+          yield* walk(fullPath, relativePath);
         } else {
-          results.push({ path: fullPath, relativePath });
+          fileCount++;
+          assertRecursiveLimit(fileCount, options.maxFiles);
+          yield { path: fullPath, relativePath };
         }
       }
     };
-    await walk(dirPath, '');
+
+    yield* walk(dirPath, '');
+  }
+
+  /** Recursively list all files (not directories) under a path. Returns full paths. */
+  async listFilesRecursive(dirPath: string): Promise<Array<{ path: string; relativePath: string }>> {
+    const results: Array<{ path: string; relativePath: string }> = [];
+    for await (const file of this.walkFilesRecursive(dirPath)) {
+      results.push(file);
+    }
     return results;
   }
 

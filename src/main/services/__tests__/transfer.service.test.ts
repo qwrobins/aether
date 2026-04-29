@@ -426,13 +426,13 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    const write = vi.fn();
+    const write = vi.fn(() => true);
     const end = vi.fn();
     const destroy = vi.fn();
     const on = vi.fn((event: string, callback: () => void) => {
       if (event === 'finish') callback();
     });
-    createWriteStreamMock.mockReturnValue({ write, end, on, destroy });
+    createWriteStreamMock.mockReturnValue({ write, end, on, destroy, once: vi.fn(), off: vi.fn() });
 
     service.setWindow({ webContents: { send } } as never);
 
@@ -469,6 +469,64 @@ describe('TransferService', () => {
     expect(item.tempPath).toBeUndefined();
     expect(item.bytesTransferred).toBe(5);
     expect(send).toHaveBeenCalledWith('transfer:progress', expect.objectContaining({ transferId: 'download-1', totalBytes: 5 }));
+  });
+
+  it('waits for write stream drain while downloading S3 chunks', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    const write = vi.fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const end = vi.fn();
+    const on = vi.fn((event: string, callback: () => void) => {
+      if (event === 'finish') callback();
+    });
+    const once = vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+      listeners.set(event, callback);
+    });
+    const off = vi.fn((event: string) => {
+      listeners.delete(event);
+    });
+    createWriteStreamMock.mockReturnValue({ write, end, on, once, off, destroy: vi.fn() });
+
+    const body = {
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from('abc');
+        yield Buffer.from('de');
+      },
+    };
+
+    const item: TransferItem = {
+      id: 'download-drain',
+      fileName: 'file.txt',
+      sourcePath: 'folder/file.txt',
+      destinationPath: '/tmp/file.txt',
+      tempPath: '/tmp/file.txt.part',
+      direction: 'download',
+      connectionId: 'conn-1',
+      connectionType: 's3',
+      bucket: 'bucket',
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    const downloading = internals.executeS3Transfer(
+      item,
+      { send: vi.fn().mockResolvedValue({ ContentLength: 5, Body: body }) },
+    );
+
+    await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+    listeners.get('drain')?.();
+    await downloading;
+
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(item.bytesTransferred).toBe(5);
+    expect(renameMock).toHaveBeenCalledWith('/tmp/file.txt.part', '/tmp/file.txt');
   });
 
   it('removes only the partial download file when a download is cancelled', async () => {

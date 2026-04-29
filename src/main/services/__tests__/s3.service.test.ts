@@ -272,6 +272,78 @@ describe('S3Service', () => {
     });
   });
 
+  it('preserves an empty prefix for root recursive object listings', async () => {
+    const { S3Service } = await import('../s3.service');
+    const service = new S3Service();
+    const client = {
+      send: vi.fn().mockResolvedValue({
+        Contents: [{ Key: 'root.txt', Size: 4 }],
+        IsTruncated: false,
+      }),
+      destroy: vi.fn(),
+    };
+
+    (service as unknown as S3ServiceInternals).clients.set('conn-1', client);
+
+    const results = await service.listObjectKeysRecursive('conn-1', 'bucket', '');
+
+    expect(results).toEqual([{ key: 'root.txt', size: 4 }]);
+    expect((client.send.mock.calls[0][0] as ListObjectsV2Command).input).toMatchObject({
+      Prefix: '',
+    });
+  });
+
+  it('caps recursive object list compatibility results without reading later pages', async () => {
+    const { S3Service } = await import('../s3.service');
+    const service = new S3Service();
+    const client = {
+      send: vi.fn()
+        .mockResolvedValueOnce({
+          Contents: [{ Key: 'photos/a.jpg', Size: 12 }],
+          IsTruncated: true,
+          NextContinuationToken: 'page-2',
+        })
+        .mockResolvedValueOnce({
+          Contents: [{ Key: 'photos/b.jpg', Size: 20 }],
+          IsTruncated: false,
+        }),
+      destroy: vi.fn(),
+    };
+
+    (service as unknown as S3ServiceInternals).clients.set('conn-1', client);
+
+    const results = await service.listObjectKeysRecursive('conn-1', 'bucket', 'photos', 1);
+
+    expect(results).toEqual([{ key: 'photos/a.jpg', size: 12 }]);
+    expect(client.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops recursive object walking when the safe object limit is exceeded', async () => {
+    const { S3Service } = await import('../s3.service');
+    const service = new S3Service();
+    const client = {
+      send: vi.fn().mockResolvedValue({
+        Contents: [
+          { Key: 'photos/a.jpg', Size: 12 },
+          { Key: 'photos/b.jpg', Size: 20 },
+        ],
+        IsTruncated: false,
+      }),
+      destroy: vi.fn(),
+    };
+
+    (service as unknown as S3ServiceInternals).clients.set('conn-1', client);
+    const results: Array<{ key: string; size: number }> = [];
+
+    await expect(async () => {
+      for await (const object of service.walkObjectKeysRecursive('conn-1', 'bucket', 'photos', { maxFiles: 1 })) {
+        results.push(object);
+      }
+    }).rejects.toThrow('S3 prefix expansion exceeded the safe limit of 1 objects');
+
+    expect(results).toEqual([{ key: 'photos/a.jpg', size: 12 }]);
+  });
+
   it('retries failed prefix deletions and re-sends only failed keys', async () => {
     vi.useFakeTimers();
 

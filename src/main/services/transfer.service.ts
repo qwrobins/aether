@@ -1,6 +1,6 @@
 import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
 import { stat, mkdir, unlink, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
@@ -33,6 +33,25 @@ function getRequiredBucket(item: TransferItem): string {
     throw new NonRetryableError('Bucket is required for S3 transfers');
   }
   return item.bucket;
+}
+
+function waitForDrain(writeStream: WriteStream): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      writeStream.off('drain', onDrain);
+      writeStream.off('error', onError);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    writeStream.once('drain', onDrain);
+    writeStream.once('error', onError);
+  });
 }
 
 export class TransferService {
@@ -239,7 +258,9 @@ export class TransferService {
       try {
         for await (const chunk of body as AsyncIterable<Buffer>) {
           if (signal?.aborted) throw new Error('Aborted');
-          writeStream.write(chunk);
+          if (!writeStream.write(chunk)) {
+            await waitForDrain(writeStream);
+          }
           downloaded += chunk.length;
           item.bytesTransferred = downloaded;
           const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
