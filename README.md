@@ -111,6 +111,12 @@ Creates distributable installers. Configured makers:
 | macOS | ZIP |
 | Linux | DEB, RPM, AppImage |
 
+### Release Automation
+
+Merging a releasable conventional commit to `main` runs `.github/workflows/prepare-release.yml`. That workflow calculates the next semantic version, updates `package.json`, `package-lock.json`, `.release-please-manifest.json`, and `CHANGELOG.md`, then pushes the matching `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which validates that the tag matches `package.json` before building Linux and macOS release assets.
+
+Configure `secrets.RELEASE_TOKEN` with a Personal Access Token or GitHub App token that can push contents and trigger workflows. Do not replace it with the default `github.token`; tags pushed with `github.token` do not trigger the tag-based `release.yml` workflow.
+
 ### macOS — "App is Damaged" Warning
 
 macOS will block the app with a "damaged" error because the build is unsigned. Run this once in Terminal after installing:

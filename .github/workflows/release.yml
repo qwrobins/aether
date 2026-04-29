@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  release:
-    types: [created]
 
 permissions:
   contents: write
@@ -138,6 +136,14 @@ jobs:
       - build
     runs-on: ubuntu-22.04
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Download release assets
         uses: actions/download-artifact@v4
         with:
@@ -153,11 +159,14 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           ls -lah
 
+      - name: Extract release notes
+        run: node scripts/extract-release-notes.mjs "${{ needs.verify.outputs.version }}" release-notes.md
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           name: Aether v${{ needs.verify.outputs.version }}
-          generate_release_notes: true
+          body_path: release-notes.md
           prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
           files: |
             release-assets/*
