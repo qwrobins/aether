@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/qwrobins/aether/compare/v0.1.8...v0.1.9) (2026-04-29)
+
+
+### Bug Fixes
+
+* **security:** harden electron boundaries ([bfb15bc](https://github.com/qwrobins/aether/commit/bfb15bcde2ce6ba567487b06fce408478f993ed3))
+
 ## [0.1.8](https://github.com/qwrobins/aether/compare/v0.1.7...v0.1.8) (2026-04-03)
 
 
