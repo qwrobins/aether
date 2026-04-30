@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.11](https://github.com/qwrobins/aether/compare/v0.1.10...v0.1.11) (2026-04-30)
+
+### Automation
+
+* Fix release bump detection ([#29](https://github.com/qwrobins/aether/pull/29))
+  * Fix release preparation so bump detection can use associated GitHub PR metadata, matching the release-note generation path.
+  * Treat non-release PRs with non-conventional plain-English titles as patch releases, while skipping docs/test/ci/build/chore-only titles.
+  * Allow `npm run release:prepare -- --dry-run` to query PR metadata so local release simulations match CI behavior.
+* Improve release notes from merged PRs ([#26](https://github.com/qwrobins/aether/pull/26))
+  * Regenerate prepared-release changelog entries from the actual merged PRs in the tag range instead of stale Release Please metadata.
+  * Skip Release Please metadata PRs and standalone chore commits in generated notes.
+  * Pull concise details from PR `## Summary` sections and group release workflow changes under Automation.
+  * Correct the committed `0.1.10` changelog entry to match the updated GitHub release notes.
+
+### Miscellaneous
+
+* Revert "[codex] Align TypeScript toolchain" ([#28](https://github.com/qwrobins/aether/pull/28))
+  * Reverts qwrobins/aether#27
+* Align TypeScript toolchain ([#27](https://github.com/qwrobins/aether/pull/27)) - QWR-96
+  * Upgrade TypeScript from 4.5 to 5.9 so the current Vite/React/Node type stack can be parsed and checked.
+  * Fix the stricter TypeScript errors exposed in IPC handlers, SFTP transfer adapter typing, renderer S3 guards, and test mocks.
+  * Keep runtime behavior unchanged while making `npx tsc --noEmit` a working verification path.
+
 ## [0.1.10](https://github.com/qwrobins/aether/compare/v0.1.9...v0.1.10) (2026-04-30)
 
 ### Automation
