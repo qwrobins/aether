@@ -60,6 +60,14 @@ function safeJoinDownloadDestination(basePath: string, relativePath: string): st
   return resolvedDestination;
 }
 
+function isDirectoryRequest(request: TransferRequest): boolean {
+  return request.isDirectory ?? request.sourcePath.endsWith('/');
+}
+
+function normalizeS3Prefix(sourcePath: string): string {
+  return sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`;
+}
+
 function validateTransferRequest(request: TransferRequest) {
   if (!request.connectionId || typeof request.connectionId !== 'string') {
     throw new Error('Connection ID is required');
@@ -82,6 +90,10 @@ function validateTransferRequest(request: TransferRequest) {
 
   if (request.connectionType !== 's3' && request.connectionType !== 'sftp') {
     throw new Error('Connection type must be s3 or sftp');
+  }
+
+  if (request.isDirectory !== undefined && typeof request.isDirectory !== 'boolean') {
+    throw new Error('isDirectory must be a boolean when provided');
   }
 
   try {
@@ -158,7 +170,12 @@ export function registerTransferHandlers(
                 { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
               )) {
                 const subDest = `${destBase}/${relativePath}`;
-                const subRequest: TransferRequest = { ...request, sourcePath: filePath, destinationPath: subDest };
+                const subRequest: TransferRequest = {
+                  ...request,
+                  sourcePath: filePath,
+                  destinationPath: subDest,
+                  isDirectory: false,
+                };
                 const transfer = await enqueueTransferItem(subRequest, transferIds);
                 items.push(transfer);
               }
@@ -176,8 +193,8 @@ export function registerTransferHandlers(
         }
       } else if (request.direction === 'download') {
         try {
-          if (request.connectionType === 's3' && request.bucket) {
-            const prefix = request.sourcePath.endsWith('/') ? request.sourcePath : request.sourcePath + '/';
+          if (request.connectionType === 's3' && request.bucket && isDirectoryRequest(request)) {
+            const prefix = normalizeS3Prefix(request.sourcePath);
             const items: TransferItem[] = [];
             const transferIds: string[] = [];
             const destBase = getDownloadDestinationBase(request.destinationPath);
@@ -191,7 +208,12 @@ export function registerTransferHandlers(
                 const relativePath = key.slice(prefix.length);
                 if (relativePath.trim() === '') continue;
                 const subDest = safeJoinDownloadDestination(destBase, relativePath);
-                const subRequest: TransferRequest = { ...request, sourcePath: key, destinationPath: subDest };
+                const subRequest: TransferRequest = {
+                  ...request,
+                  sourcePath: key,
+                  destinationPath: subDest,
+                  isDirectory: false,
+                };
                 const transfer = await enqueueTransferItem(subRequest, transferIds, size);
                 items.push(transfer);
               }
@@ -219,7 +241,12 @@ export function registerTransferHandlers(
                 )) {
                   if (relativePath == null || relativePath.trim() === '') continue;
                   const subDest = safeJoinDownloadDestination(destBase, relativePath);
-                  const subRequest: TransferRequest = { ...request, sourcePath: remotePath, destinationPath: subDest };
+                  const subRequest: TransferRequest = {
+                    ...request,
+                    sourcePath: remotePath,
+                    destinationPath: subDest,
+                    isDirectory: false,
+                  };
                   const transfer = await enqueueTransferItem(subRequest, transferIds, size);
                   items.push(transfer);
                 }
