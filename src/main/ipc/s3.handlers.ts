@@ -20,7 +20,7 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
       await sftpService.connect(id, profile as SftpConnectionProfile);
       return { status: 'connected' };
     }
-    throw new Error(`Connection type ${(profile as { type: string }).type} not supported`);
+    throw new Error(`Connection type ${profile.type} not supported`);
   });
 
   ipcMain.handle(IpcChannels.CONN_DISCONNECT, async (_event, id: string) => {

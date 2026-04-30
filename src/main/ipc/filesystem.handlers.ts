@@ -1,4 +1,4 @@
-import { type IpcMain, type OpenDialogOptions, dialog, shell, BrowserWindow } from 'electron';
+import { type IpcMain, dialog, shell, BrowserWindow } from 'electron';
 import { platform } from 'node:os';
 import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
@@ -72,14 +72,14 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(IpcChannels.DIALOG_OPEN_DIRECTORY, async (_event, defaultPath?: string) => {
     const parentWindow = BrowserWindow.getFocusedWindow();
-    const options: OpenDialogOptions = {
-      title: 'Select Folder',
-      defaultPath,
-      properties: ['openDirectory', 'createDirectory'],
-    };
-    const result = parentWindow
-      ? await dialog.showOpenDialog(parentWindow, options)
-      : await dialog.showOpenDialog(options);
+    const result = await dialog.showOpenDialog(
+      ...(parentWindow ? [parentWindow] : []),
+      {
+        title: 'Select Folder',
+        defaultPath,
+        properties: ['openDirectory', 'createDirectory'],
+      },
+    );
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
   });
 
@@ -87,15 +87,15 @@ export function registerFilesystemHandlers(ipcMain: IpcMain): void {
     IpcChannels.DIALOG_OPEN_FILE,
     async (_event, options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => {
       const parentWindow = BrowserWindow.getFocusedWindow();
-      const dialogOptions: OpenDialogOptions = {
-        title: options?.title ?? 'Select File',
-        defaultPath: options?.defaultPath,
-        filters: options?.filters,
-        properties: ['openFile', 'showHiddenFiles'],
-      };
-      const result = parentWindow
-        ? await dialog.showOpenDialog(parentWindow, dialogOptions)
-        : await dialog.showOpenDialog(dialogOptions);
+      const result = await dialog.showOpenDialog(
+        ...(parentWindow ? [parentWindow] : []),
+        {
+          title: options?.title ?? 'Select File',
+          defaultPath: options?.defaultPath,
+          filters: options?.filters,
+          properties: ['openFile', 'showHiddenFiles'],
+        },
+      );
       return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0];
     },
   );

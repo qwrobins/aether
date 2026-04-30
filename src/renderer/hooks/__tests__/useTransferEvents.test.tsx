@@ -7,9 +7,6 @@ import { useTransferStore } from '@/stores/transferStore';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import type { TransferItem } from '@shared/types/transfer';
-import type { IpcEventMap } from '@shared/types/ipc';
-
-type EventHandlers = Partial<Record<keyof IpcEventMap, (data: unknown) => void>>;
 
 function HookHarness() {
   useTransferEvents();
@@ -32,16 +29,6 @@ function transfer(overrides: Partial<TransferItem>): TransferItem {
     retryCount: 0,
     ...overrides,
   };
-}
-
-function mockEventSubscriptions(handlers: EventHandlers): void {
-  window.api.on = vi.fn(<K extends keyof IpcEventMap>(
-    channel: K,
-    callback: (data: IpcEventMap[K]) => void,
-  ) => {
-    handlers[channel] = callback as (data: unknown) => void;
-    return vi.fn();
-  }) as typeof window.api.on;
 }
 
 describe('useTransferEvents', () => {
@@ -72,8 +59,11 @@ describe('useTransferEvents', () => {
   });
 
   it('updates progress, marks completion, and refreshes the destination pane', () => {
-    const handlers: EventHandlers = {};
-    mockEventSubscriptions(handlers);
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
 
     const remoteRefresh = vi.fn();
     useRemotePanelStore.setState({ refresh: remoteRefresh });
@@ -83,7 +73,7 @@ describe('useTransferEvents', () => {
 
     render(<HookHarness />);
 
-    handlers['transfer:progress']?.({
+    handlers.get('transfer:progress')?.({
       transferId: 'upload-1',
       bytesTransferred: 55,
       totalBytes: 100,
@@ -94,14 +84,17 @@ describe('useTransferEvents', () => {
       status: 'active',
     });
 
-    handlers['transfer:complete']?.({ transferId: 'upload-1', status: 'completed', success: true });
+    handlers.get('transfer:complete')?.({ transferId: 'upload-1', status: 'completed', success: true });
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(remoteRefresh).toHaveBeenCalledTimes(1);
   });
 
   it('marks failed transfers from error events without refreshing panes', () => {
-    const handlers: EventHandlers = {};
-    mockEventSubscriptions(handlers);
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
 
     const localRefresh = vi.fn();
     useLocalPanelStore.setState({ refresh: localRefresh });
@@ -111,7 +104,7 @@ describe('useTransferEvents', () => {
 
     render(<HookHarness />);
 
-    handlers['transfer:error']?.({ transferId: 'download-1', error: 'boom' });
+    handlers.get('transfer:error')?.({ transferId: 'download-1', error: 'boom' });
     expect(useTransferStore.getState().transfers[0]).toMatchObject({
       status: 'failed',
       error: 'boom',
@@ -120,8 +113,11 @@ describe('useTransferEvents', () => {
   });
 
   it('refreshes the local pane when a download completes successfully', () => {
-    const handlers: EventHandlers = {};
-    mockEventSubscriptions(handlers);
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
 
     const localRefresh = vi.fn();
     const remoteRefresh = vi.fn();
@@ -133,13 +129,13 @@ describe('useTransferEvents', () => {
 
     render(<HookHarness />);
 
-    handlers['transfer:progress']?.({
+    handlers.get('transfer:progress')?.({
       transferId: 'download-1',
       bytesTransferred: 100,
       totalBytes: 100,
       speed: 10,
     });
-    handlers['transfer:complete']?.({ transferId: 'download-1', status: 'completed', success: true });
+    handlers.get('transfer:complete')?.({ transferId: 'download-1', status: 'completed', success: true });
 
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(localRefresh).toHaveBeenCalledTimes(1);
@@ -147,8 +143,11 @@ describe('useTransferEvents', () => {
   });
 
   it('marks cancelled transfers without refreshing panes', () => {
-    const handlers: EventHandlers = {};
-    mockEventSubscriptions(handlers);
+    const handlers = new Map<string, (data: unknown) => void>();
+    window.api.on = vi.fn((channel: string, callback: (data: unknown) => void) => {
+      handlers.set(channel, callback);
+      return vi.fn();
+    });
 
     const localRefresh = vi.fn();
     const remoteRefresh = vi.fn();
@@ -160,7 +159,7 @@ describe('useTransferEvents', () => {
 
     render(<HookHarness />);
 
-    handlers['transfer:complete']?.({
+    handlers.get('transfer:complete')?.({
       transferId: 'upload-1',
       status: 'cancelled',
       success: false,

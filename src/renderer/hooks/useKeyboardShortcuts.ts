@@ -39,11 +39,9 @@ export function useKeyboardShortcuts() {
             }
 
             if (confirm(`Delete ${paths.length} remote item(s)?`)) {
-              const connectionId = remoteStore.activeConnectionId as string;
-              const bucket = remoteStore.currentBucket as string;
               Promise.all(
                 paths.map((p) =>
-                  window.api.invoke('s3:delete-object', connectionId, bucket, p)
+                  window.api.invoke('s3:delete-object', remoteStore.activeConnectionId, remoteStore.currentBucket, p)
                 )
               )
                 .then(() => remoteStore.refresh())
