@@ -1,11 +1,24 @@
 # Changelog
 
-## [0.1.10](https://github.com/qwrobins/aether/compare/v0.1.9...v0.1.10) (2026-04-29)
+## [0.1.10](https://github.com/qwrobins/aether/compare/v0.1.9...v0.1.10) (2026-04-30)
 
+### Automation
 
-### Miscellaneous
+* Fix prepared release tagging ([#25](https://github.com/qwrobins/aether/pull/25))
+  * Allows `scripts/prepare-release.mjs` to recover when release metadata is already prepared for a newer package version but the matching tag is missing.
+  * Lets the prepare-release workflow continue when there are no metadata changes to commit, so it can create and push the missing tag.
+* ci(release): prepare releases from main merges ([#23](https://github.com/qwrobins/aether/pull/23)) - QWR-101
+  * Replace the Release Please PR handoff with a direct main-merge release preparation workflow
+  * Add scripts to calculate the next semver tag, update package metadata and CHANGELOG.md, and extract release notes from the top changelog entry
+  * Keep the asset publishing workflow tag-driven while validating tag/package version alignment and documenting the required RELEASE_TOKEN setup
+  * Pin Vitest to NODE_ENV=test and quiet lint import parsing so release validation is deterministic
 
-* ignore local agent instructions ([66b5912](https://github.com/qwrobins/aether/commit/66b59126d57dde39181987a76c4ef17698b6a536))
+### Bug Fixes
+
+* Fix transfer reliability and scale ([#24](https://github.com/qwrobins/aether/pull/24)) - QWR-93, QWR-94, QWR-95
+  * Fixes QWR-93 by making S3 downloads respect write-stream backpressure while preserving progress, temp-file, rename, and cancellation behavior.
+  * Fixes QWR-94 by streaming recursive local, S3, and SFTP expansion with a 10,000-file/object safety cap and rollback on queueing failure.
+  * Fixes QWR-95 by returning structured SFTP per-path delete results and surfacing partial failures in the remote delete UI while still refreshing successful deletes.
 
 ## [0.1.9](https://github.com/qwrobins/aether/compare/v0.1.8...v0.1.9) (2026-04-29)
 
