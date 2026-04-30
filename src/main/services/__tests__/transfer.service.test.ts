@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TransferItem, TransferRequest } from '@shared/types/transfer';
+import type { TransferItem, TransferRequest, TransferResult } from '@shared/types/transfer';
 
 const statMock = vi.fn();
 const mkdirMock = vi.fn();
@@ -59,6 +59,10 @@ type TransferServiceInternals = {
     signal?: AbortSignal,
     startTime?: number,
   ) => Promise<void>;
+  closeSftpTransferClient: (id: string, mode: 'abort' | 'disconnect') => Promise<void>;
+  cleanupCancelledDownload: (item: TransferItem) => Promise<void>;
+  cleanupTransferResources: (id: string) => Promise<void>;
+  emitComplete: (result: TransferResult) => void;
 };
 
 vi.mock('electron', () => ({
@@ -107,7 +111,7 @@ describe('TransferService', () => {
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(async (item: TransferItem) => {
+    vi.spyOn(internals, 'executeS3Transfer').mockImplementation(async (item: TransferItem) => {
       item.size = 10;
       item.bytesTransferred = 10;
       item.speed = 5;
@@ -135,10 +139,11 @@ describe('TransferService', () => {
 
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer')
+    vi.spyOn(internals, 'executeS3Transfer')
       .mockRejectedValueOnce(new Error('boom'))
       .mockImplementationOnce(async (item: TransferItem) => {
         item.size = 25;
@@ -212,10 +217,11 @@ describe('TransferService', () => {
   it('cancels active transfers and emits a cancelled completion result', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+    vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
         new Promise<void>((_resolve, reject) => {
           signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
@@ -252,7 +258,7 @@ describe('TransferService', () => {
       disconnect: vi.fn().mockResolvedValue(undefined),
     };
 
-    vi.spyOn(service as never, 'executeSftpTransfer').mockImplementation(
+    vi.spyOn(internals, 'executeSftpTransfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
         new Promise<void>((_resolve, reject) => {
           signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
@@ -309,10 +315,11 @@ describe('TransferService', () => {
   it('cancels queued transfers before they start', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+    vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
         new Promise<void>((resolve, reject) => {
           signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
@@ -346,10 +353,11 @@ describe('TransferService', () => {
 
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
+    vi.spyOn(internals, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
 
     const id = await service.enqueue(createRequest(), {} as never);
     await flushQueue();
@@ -532,10 +540,11 @@ describe('TransferService', () => {
   it('removes only the partial download file when a download is cancelled', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
     service.setWindow({ webContents: { send } } as never);
 
-    vi.spyOn(service as never, 'executeS3Transfer').mockImplementation(
+    vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
         new Promise<void>((_resolve, reject) => {
           signal?.addEventListener('abort', () => reject(new Error('Aborted')), { once: true });
@@ -570,7 +579,7 @@ describe('TransferService', () => {
 
     let releaseClose: (() => void) | undefined;
     const closeSftpTransferClient = vi
-      .spyOn(service as never, 'closeSftpTransferClient')
+      .spyOn(internals, 'closeSftpTransferClient')
       .mockImplementation(
         () =>
           new Promise<void>((resolve) => {
@@ -578,12 +587,12 @@ describe('TransferService', () => {
           }),
       );
     const cleanupCancelledDownload = vi
-      .spyOn(service as never, 'cleanupCancelledDownload')
+      .spyOn(internals, 'cleanupCancelledDownload')
       .mockResolvedValue(undefined);
     const cleanupTransferResources = vi
-      .spyOn(service as never, 'cleanupTransferResources')
+      .spyOn(internals, 'cleanupTransferResources')
       .mockResolvedValue(undefined);
-    const emitComplete = vi.spyOn(service as never, 'emitComplete').mockImplementation(() => undefined);
+    const emitComplete = vi.spyOn(internals, 'emitComplete').mockImplementation(() => undefined);
 
     const item: TransferItem = {
       id: 'cancel-race',
