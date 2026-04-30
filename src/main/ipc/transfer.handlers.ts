@@ -176,8 +176,8 @@ export function registerTransferHandlers(
         }
       } else if (request.direction === 'download') {
         try {
-          if (request.connectionType === 's3' && request.bucket) {
-            const prefix = request.sourcePath.endsWith('/') ? request.sourcePath : request.sourcePath + '/';
+          if (request.connectionType === 's3' && request.bucket && request.sourcePath.endsWith('/')) {
+            const prefix = request.sourcePath;
             const items: TransferItem[] = [];
             const transferIds: string[] = [];
             const destBase = getDownloadDestinationBase(request.destinationPath);
