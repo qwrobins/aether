@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/qwrobins/aether/compare/v0.1.11...v0.1.12) (2026-04-30)
+
+### Bug Fixes
+
+* Fix S3 file downloads ([#30](https://github.com/qwrobins/aether/pull/30))
+  * Fixes S3 single-file downloads silently doing nothing.
+
 ## [0.1.11](https://github.com/qwrobins/aether/compare/v0.1.10...v0.1.11) (2026-04-30)
 
 ### Automation
