@@ -32,7 +32,10 @@ const getS3Client = vi.fn(() => ({ kind: 's3-client' }));
 const getSftpClient = vi.fn(() => ({ kind: 'sftp-client', stat: vi.fn() }));
 const listSftpFilesRecursive = vi.fn();
 
-async function* fromMockedList<T>(mock: ReturnType<typeof vi.fn>, ...args: unknown[]): AsyncGenerator<T> {
+async function* fromMockedList<T>(
+  mock: (...args: unknown[]) => Promise<T[]>,
+  ...args: unknown[]
+): AsyncGenerator<T> {
   const items = await mock(...args);
   for (const item of items) {
     yield item;
@@ -316,7 +319,7 @@ describe('registerTransferHandlers', () => {
   });
 
   it('expands SFTP directory downloads into nested destinations', async () => {
-    const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
     getSftpClient.mockReturnValue(client);
     listSftpFilesRecursive.mockResolvedValue([
       { path: '/remote/root/file.txt', relativePath: 'file.txt', size: 4 },
@@ -345,7 +348,7 @@ describe('registerTransferHandlers', () => {
   });
 
   it('skips SFTP directory marker entries during directory downloads', async () => {
-    const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
     getSftpClient.mockReturnValue(client);
     listSftpFilesRecursive.mockResolvedValue([
       { path: '/remote/root', relativePath: '   ', size: 0 },
@@ -369,7 +372,7 @@ describe('registerTransferHandlers', () => {
   });
 
   it('rejects SFTP directory downloads with separator traversal', async () => {
-    const client = { stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
     getSftpClient.mockReturnValue(client);
     listSftpFilesRecursive.mockResolvedValue([
       { path: '/remote/root/escape.txt', relativePath: 'deep\\..\\escape.txt', size: 4 },

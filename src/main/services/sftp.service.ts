@@ -94,10 +94,16 @@ export class SftpService {
     };
 
     return {
-      mkdir: client.mkdir.bind(client),
-      fastPut: client.fastPut.bind(client),
+      mkdir: async (path, recursive) => {
+        await client.mkdir(path, recursive);
+      },
+      fastPut: async (sourcePath, destinationPath, options) => {
+        await client.fastPut(sourcePath, destinationPath, options);
+      },
       stat: client.stat.bind(client),
-      fastGet: client.fastGet.bind(client),
+      fastGet: async (sourcePath, destinationPath, options) => {
+        await client.fastGet(sourcePath, destinationPath, options);
+      },
       abort: close,
       disconnect: close,
     };
