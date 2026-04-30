@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRemotePanelStore } from '../remotePanelStore';
 import type { ConnectionProfile, S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
+import type { IpcInvokeMap } from '@shared/types/ipc';
 
 function fileEntry(overrides: Partial<FileEntry>): FileEntry {
   return {
@@ -67,6 +68,12 @@ function resetStore(): void {
   });
 }
 
+function mockInvoke(
+  implementation: (channel: keyof IpcInvokeMap, ...args: unknown[]) => Promise<unknown>,
+): void {
+  window.api.invoke = vi.fn(implementation) as typeof window.api.invoke;
+}
+
 describe('useRemotePanelStore', () => {
   beforeEach(() => {
     resetStore();
@@ -82,7 +89,7 @@ describe('useRemotePanelStore', () => {
         fileEntry({ name: 'docs', path: 'docs/', isDirectory: true, size: 0 }),
       ],
     };
-    window.api.invoke = vi.fn((channel: string) => {
+    mockInvoke(async (channel) => {
       if (channel === 'conn:connect') return Promise.resolve({ status: 'connected' });
       if (channel === 's3:list-buckets') return Promise.resolve(['archive', 'photos']);
       if (channel === 's3:list-objects') return Promise.resolve(listing);
@@ -106,7 +113,7 @@ describe('useRemotePanelStore', () => {
       parentPath: '/var',
       entries: [fileEntry({ name: 'index.html', path: '/var/www/index.html' })],
     };
-    window.api.invoke = vi.fn((channel: string) => {
+    mockInvoke(async (channel) => {
       if (channel === 'conn:connect') return Promise.resolve({ status: 'connected' });
       if (channel === 'sftp:list') return Promise.resolve(listing);
       return Promise.reject(new Error(`Unhandled channel ${channel}`));
@@ -130,7 +137,7 @@ describe('useRemotePanelStore', () => {
       connectionStatus: 'connected',
       currentBucket: null,
     });
-    window.api.invoke = vi.fn((channel: string) => {
+    mockInvoke(async (channel) => {
       if (channel === 's3:list-buckets') return Promise.resolve(['photos']);
       return Promise.reject(new Error(`Unhandled channel ${channel}`));
     });

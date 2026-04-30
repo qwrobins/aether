@@ -173,15 +173,13 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
     const { activeConnectionId, activeProfile, currentBucket, sortField, sortDirection } = get();
     if (!activeConnectionId || !activeProfile) return;
 
-    // S3 requires a bucket to be selected before navigating
     if (activeProfile.type === 's3' && !currentBucket) return;
-    const bucket = currentBucket;
 
     set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
       const listing = activeProfile.type === 'sftp'
         ? await window.api.invoke('sftp:list', activeConnectionId, path)
-        : await window.api.invoke('s3:list-objects', activeConnectionId, bucket, path);
+        : await window.api.invoke('s3:list-objects', activeConnectionId, currentBucket as string, path);
       set({
         currentPath: path,
         entries: sortEntries(listing.entries, sortField, sortDirection),

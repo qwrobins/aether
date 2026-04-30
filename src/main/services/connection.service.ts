@@ -76,7 +76,8 @@ export class ConnectionService {
     writeStore(store);
   }
 
-  async test(): Promise<boolean> {
+  async test(profile: ConnectionProfile): Promise<boolean> {
+    void profile;
     // Actual S3/SFTP connectivity testing comes in Phase 4/5
     return true;
   }
@@ -140,8 +141,8 @@ export class ConnectionService {
 
     for (const field of fields) {
       const currentValue = (clone as Record<string, unknown>)[field];
-      const existingValue = (existing as Record<string, unknown>)[field];
-      const existingStoredValue = (existingStoredProfile as Record<string, unknown>)[field];
+      const existingValue = (existing as unknown as Record<string, unknown>)[field];
+      const existingStoredValue = (existingStoredProfile as unknown as Record<string, unknown>)[field];
       if (
         currentValue === undefined &&
         decryptedFields.has(field) &&
