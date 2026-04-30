@@ -7,15 +7,20 @@ const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
 const repo = process.env.GITHUB_REPOSITORY ?? git(["config", "--get", "remote.origin.url"]).replace(/^.*github.com[:/]/, "").replace(/\.git$/, "");
 const token = process.env.GITHUB_TOKEN;
+const prCache = new Map();
 
 function git(command) {
   return execFileSync("git", command, { encoding: "utf8" }).trim();
 }
 
 function gh(command) {
+  const env = { ...process.env };
+  if (token) {
+    env.GH_TOKEN = token;
+  }
   return execFileSync("gh", command, {
     encoding: "utf8",
-    env: { ...process.env, GH_TOKEN: token ?? process.env.GH_TOKEN ?? "" },
+    env,
   }).trim();
 }
 
@@ -87,7 +92,7 @@ function commitsSince(tag) {
 function conventionalType(commit) {
   const match = commit.subject.match(/^(\w+)(?:\([^)]+\))?(!)?:\s+(.+)$/);
   if (!match) {
-    return { type: "misc", title: commit.subject, breaking: /BREAKING CHANGE:/i.test(commit.body) };
+    return { type: undefined, title: commit.subject, breaking: /BREAKING CHANGE:/i.test(commit.body) };
   }
   return {
     type: match[1],
@@ -96,17 +101,67 @@ function conventionalType(commit) {
   };
 }
 
+function bumpForParsed(parsed) {
+  if (parsed.breaking) {
+    return "major";
+  }
+  if (parsed.type === "feat") {
+    return "minor";
+  }
+  if (["fix", "perf", "security", "revert"].includes(parsed.type)) {
+    return "patch";
+  }
+  return null;
+}
+
+function isMaintenanceTitle(title) {
+  const maintenanceNoun = "\\b(?:docs?|tests?|ci|readme)\\b";
+  const maintenanceVerb = "\\b(?:update|add|refresh)\\b";
+  return (
+    new RegExp(`^${maintenanceNoun}(?:\\s|:|-|$)`, "i").test(title) ||
+    new RegExp(`^${maintenanceVerb}\\s+(?:the\\s+)?${maintenanceNoun}(?:\\s|:|-|$)`, "i").test(title) ||
+    new RegExp(`^${maintenanceNoun}\\s+${maintenanceVerb}(?:\\s|:|-|$)`, "i").test(title)
+  );
+}
+
+function bumpFromReleaseTitle(title) {
+  const normalized = releaseNoteTitle(title).trim();
+  const parsed = conventionalType({ subject: normalized, body: "" });
+  const conventionalBump = bumpForParsed(parsed);
+  if (conventionalBump) {
+    return conventionalBump;
+  }
+  if (parsed.type) {
+    return null;
+  }
+
+  if (isMaintenanceTitle(normalized)) {
+    return null;
+  }
+
+  return normalized ? "patch" : null;
+}
+
 function releaseBump(commits) {
   let bump = null;
   for (const commit of commits) {
-    const parsed = conventionalType(commit);
-    if (parsed.breaking) {
+    const pr = cachedGithubPrForCommit(commit);
+    if (isReleaseMetadataPr(pr)) {
+      continue;
+    }
+
+    const parsed = pr
+      ? conventionalType({ subject: releaseNoteTitle(pr.title ?? ""), body: pr.body ?? commit.body })
+      : conventionalType(commit);
+    const commitBump = bumpForParsed(parsed) ?? (pr ? bumpFromReleaseTitle(pr.title ?? "") : null);
+
+    if (commitBump === "major") {
       return "major";
     }
-    if (parsed.type === "feat") {
-      bump = bump === "major" ? bump : "minor";
+    if (commitBump === "minor") {
+      bump = "minor";
     }
-    if (["fix", "perf", "security", "revert"].includes(parsed.type) && bump !== "minor") {
+    if (commitBump === "patch" && bump !== "minor") {
       bump = "patch";
     }
   }
@@ -159,7 +214,7 @@ function localPrNumber(commit) {
 }
 
 function githubPrForCommit(commit) {
-  if (!token || !repo || dryRun) {
+  if (!repo) {
     return null;
   }
 
@@ -173,9 +228,18 @@ function githubPrForCommit(commit) {
       ".[0] // empty",
     ]);
     return output ? JSON.parse(output) : null;
-  } catch {
-    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to fetch pull request metadata for commit ${commit.sha}: ${message}`);
+    throw new Error(`Unable to fetch pull request metadata for ${commit.sha}`, { cause: error });
   }
+}
+
+function cachedGithubPrForCommit(commit) {
+  if (!prCache.has(commit.sha)) {
+    prCache.set(commit.sha, githubPrForCommit(commit));
+  }
+  return prCache.get(commit.sha);
 }
 
 function releaseNoteTitle(title) {
@@ -210,7 +274,7 @@ function changelogEntry(version, previousTag, commits) {
   const seen = new Set();
 
   for (const commit of commits) {
-    const pr = githubPrForCommit(commit);
+    const pr = cachedGithubPrForCommit(commit);
     if (isReleaseMetadataPr(pr)) {
       continue;
     }
