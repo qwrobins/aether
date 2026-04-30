@@ -118,6 +118,7 @@ function sectionFor(type) {
   if (["fix", "revert"].includes(type)) return "Bug Fixes";
   if (type === "perf") return "Performance";
   if (type === "security") return "Security";
+  if (["ci", "build"].includes(type)) return "Automation";
   return "Miscellaneous";
 }
 
@@ -127,6 +128,7 @@ function linkedIssueRefs(text) {
 
 function cleanBody(body) {
   return body
+    .replace(/<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->[\s\S]*?<!-- end of auto-generated comment: release notes by coderabbit\.ai -->/g, "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("<!--") && !line.startsWith(">"))
@@ -135,9 +137,25 @@ function cleanBody(body) {
     .slice(0, 6);
 }
 
+function summaryLines(body) {
+  const withoutGenerated = body.replace(
+    /<!-- This is an auto-generated comment: release notes by coderabbit\.ai -->[\s\S]*?<!-- end of auto-generated comment: release notes by coderabbit\.ai -->/g,
+    "",
+  );
+  const summaryMatch = withoutGenerated.match(/^##\s+Summary\s*$/im);
+  if (!summaryMatch || summaryMatch.index === undefined) {
+    return cleanBody(withoutGenerated);
+  }
+
+  const start = summaryMatch.index + summaryMatch[0].length;
+  const rest = withoutGenerated.slice(start);
+  const nextHeading = rest.search(/^##\s+/m);
+  return cleanBody(nextHeading === -1 ? rest : rest.slice(0, nextHeading));
+}
+
 function localPrNumber(commit) {
-  const match = `${commit.subject}\n${commit.body}`.match(/\(#(\d+)\)|Pull Request resolved:\s*#(\d+)/i);
-  return match?.[1] ?? match?.[2] ?? null;
+  const match = `${commit.subject}\n${commit.body}`.match(/\(#(\d+)\)|Pull Request resolved:\s*#(\d+)|Merge pull request #(\d+)/i);
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 }
 
 function githubPrForCommit(commit) {
@@ -160,6 +178,29 @@ function githubPrForCommit(commit) {
   }
 }
 
+function releaseNoteTitle(title) {
+  return title.replace(/^\[codex\]\s+/i, "");
+}
+
+function releaseNoteSection(title, parsed) {
+  const normalizedTitle = releaseNoteTitle(title);
+  if (/\b(?:release|tag|workflow|automation)\b/i.test(normalizedTitle)) {
+    return "Automation";
+  }
+  if (/^fix\b/i.test(normalizedTitle)) {
+    return "Bug Fixes";
+  }
+  return sectionFor(parsed.type);
+}
+
+function isReleaseMetadataPr(pr) {
+  return Boolean(
+    pr &&
+      (/^chore\(main\): release\b/i.test(pr.title ?? "") ||
+        /This PR was generated with \[Release Please\]/i.test(pr.body ?? "")),
+  );
+}
+
 function changelogEntry(version, previousTag, commits) {
   const today = new Date().toISOString().slice(0, 10);
   const compareBase = previousTag || git(["rev-list", "--max-parents=0", "HEAD"]);
@@ -169,9 +210,19 @@ function changelogEntry(version, previousTag, commits) {
   const seen = new Set();
 
   for (const commit of commits) {
-    const parsed = conventionalType(commit);
-    const section = sectionFor(parsed.type);
     const pr = githubPrForCommit(commit);
+    if (isReleaseMetadataPr(pr)) {
+      continue;
+    }
+    const commitParsed = conventionalType(commit);
+    const title = pr?.title ?? commitParsed.title;
+    const parsed = pr
+      ? conventionalType({ subject: releaseNoteTitle(title), body: pr.body ?? commit.body })
+      : commitParsed;
+    if (!pr && parsed.type === "chore") {
+      continue;
+    }
+    const section = releaseNoteSection(title, parsed);
     const prNumber = pr?.number ?? localPrNumber(commit);
     const key = prNumber ? `pr:${prNumber}` : `commit:${commit.sha}`;
     if (seen.has(key)) {
@@ -179,12 +230,11 @@ function changelogEntry(version, previousTag, commits) {
     }
     seen.add(key);
 
-    const title = pr?.title ?? parsed.title;
     const url = pr?.html_url ?? (prNumber ? `https://github.com/${repo}/pull/${prNumber}` : `https://github.com/${repo}/commit/${commit.sha}`);
     const refs = Array.from(new Set([...linkedIssueRefs(commit.subject), ...linkedIssueRefs(commit.body), ...linkedIssueRefs(pr?.body ?? "")]));
-    const detailLines = cleanBody(pr?.body ?? commit.body);
+    const detailLines = summaryLines(pr?.body ?? commit.body);
     const item = [
-      `* ${title} ([${prNumber ? `#${prNumber}` : commit.sha.slice(0, 7)}](${url}))${refs.length ? ` - ${refs.join(", ")}` : ""}`,
+      `* ${releaseNoteTitle(title)} ([${prNumber ? `#${prNumber}` : commit.sha.slice(0, 7)}](${url}))${refs.length ? ` - ${refs.join(", ")}` : ""}`,
       ...detailLines.map((line) => `  * ${line.replace(/^-+\s*/, "")}`),
     ];
 
@@ -199,6 +249,23 @@ function changelogEntry(version, previousTag, commits) {
   }
 
   return lines.join("\n").trimEnd();
+}
+
+function writeChangelogEntry(version, previousTag, commits) {
+  const changelog = existsSync("CHANGELOG.md") ? readFileSync("CHANGELOG.md", "utf8") : "# Changelog\n";
+  const entry = changelogEntry(version, previousTag, commits);
+  const heading = new RegExp(`^## \\[${version.replaceAll(".", "\\.")}\\].*$`, "m");
+  const match = changelog.match(heading);
+
+  if (!match || match.index === undefined) {
+    return changelog.replace(/^# Changelog\s*/, `# Changelog\n\n${entry}\n\n`);
+  }
+
+  const start = match.index;
+  const rest = changelog.slice(start + match[0].length);
+  const nextHeading = rest.search(/^## \[/m);
+  const end = nextHeading === -1 ? changelog.length : start + match[0].length + nextHeading;
+  return `${changelog.slice(0, start)}${entry}\n\n${changelog.slice(end).replace(/^\s+/, "")}`;
 }
 
 function updatePackageLock(version) {
@@ -234,6 +301,10 @@ const baseVersion = previousTag ? normalizeVersion(previousTag) : packageVersion
 
 if (previousTag && packageVersion !== baseVersion) {
   if (compareVersions(packageVersion, baseVersion) > 0 && hasPreparedReleaseMetadata(packageVersion)) {
+    const commits = commitsSince(previousTag);
+    if (!dryRun) {
+      writeFileSync("CHANGELOG.md", writeChangelogEntry(packageVersion, previousTag, commits));
+    }
     setOutput("released", "true");
     setOutput("version", packageVersion);
     setOutput("tag", `v${packageVersion}`);
@@ -274,9 +345,7 @@ if (!dryRun) {
   updatePackageLock(nextVersion);
 }
 
-const changelog = existsSync("CHANGELOG.md") ? readFileSync("CHANGELOG.md", "utf8") : "# Changelog\n";
-const entry = changelogEntry(nextVersion, previousTag, commits);
-const nextChangelog = changelog.replace(/^# Changelog\s*/, `# Changelog\n\n${entry}\n\n`);
+const nextChangelog = writeChangelogEntry(nextVersion, previousTag, commits);
 if (!dryRun) {
   writeFileSync("CHANGELOG.md", nextChangelog);
 }
