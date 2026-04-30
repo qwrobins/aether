@@ -149,7 +149,7 @@ describe('registerTransferHandlers', () => {
     expect((result as TransferItem[]).map((item) => item.id)).toEqual(['transfer-1', 'transfer-2']);
   });
 
-  it('expands S3 prefix downloads into file transfers with preserved sizes', async () => {
+  it('expands explicit S3 directory downloads into file transfers with preserved sizes', async () => {
     listObjectKeysRecursive.mockResolvedValue([
       { key: 'photos/2026/a.jpg', size: 12 },
       { key: 'photos/2026/nested/b.jpg', size: 30 },
@@ -160,9 +160,10 @@ describe('registerTransferHandlers', () => {
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/2026/',
+      sourcePath: 'photos/2026',
       destinationPath: '/downloads/photos/',
       bucket: 'images',
+      isDirectory: true,
     }));
 
     expect(listObjectKeysRecursive).toHaveBeenCalledWith('conn-1', 'images', 'photos/2026/');
@@ -185,9 +186,10 @@ describe('registerTransferHandlers', () => {
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/2026/',
+      sourcePath: 'photos/2026',
       destinationPath: '/downloads/photos/',
       bucket: 'images',
+      isDirectory: true,
     }));
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -197,7 +199,7 @@ describe('registerTransferHandlers', () => {
     });
   });
 
-  it('queues a single S3 object download without trying to expand it as a prefix', async () => {
+  it('queues a single S3 object download when explicitly marked as a file', async () => {
     listObjectKeysRecursive.mockResolvedValue([]);
 
     const { handlers } = await createIpcHandlerSetup();
@@ -205,21 +207,22 @@ describe('registerTransferHandlers', () => {
     const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/empty',
+      sourcePath: 'photos/empty/',
       destinationPath: '/downloads/photos/empty',
       bucket: 'images',
+      isDirectory: false,
     }));
 
     expect(result).toBe('transfer-1');
     expect(listObjectKeysRecursive).not.toHaveBeenCalled();
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(enqueue.mock.calls[0][0]).toMatchObject({
-      sourcePath: 'photos/empty',
+      sourcePath: 'photos/empty/',
       destinationPath: '/downloads/photos/empty',
     });
   });
 
-  it('returns an empty S3 directory expansion for empty folder-style prefixes', async () => {
+  it('falls back to folder-style S3 prefixes for legacy callers without isDirectory', async () => {
     listObjectKeysRecursive.mockResolvedValue([]);
 
     const { handlers } = await createIpcHandlerSetup();
@@ -246,9 +249,10 @@ describe('registerTransferHandlers', () => {
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/2026/',
+      sourcePath: 'photos/2026',
       destinationPath: '/downloads/photos/',
       bucket: 'images',
+      isDirectory: true,
     }));
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -268,9 +272,10 @@ describe('registerTransferHandlers', () => {
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/2026/',
+      sourcePath: 'photos/2026',
       destinationPath: '/',
       bucket: 'images',
+      isDirectory: true,
     }));
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -289,9 +294,10 @@ describe('registerTransferHandlers', () => {
     await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
-      sourcePath: 'photos/2026/',
+      sourcePath: 'photos/2026',
       destinationPath: 'C:/',
       bucket: 'images',
+      isDirectory: true,
     }));
 
     expect(enqueue).toHaveBeenCalledTimes(1);
@@ -311,9 +317,10 @@ describe('registerTransferHandlers', () => {
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
         direction: 'download',
         connectionType: 's3',
-        sourcePath: 'photos/2026/',
+        sourcePath: 'photos/2026',
         destinationPath: '/downloads/photos/',
         bucket: 'images',
+        isDirectory: true,
       })),
     ).rejects.toThrow('Directory download queueing failed: Remote path escapes the destination directory');
 
@@ -331,9 +338,10 @@ describe('registerTransferHandlers', () => {
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
         direction: 'download',
         connectionType: 's3',
-        sourcePath: 'photos/2026/',
+        sourcePath: 'photos/2026',
         destinationPath: '/downloads/photos/',
         bucket: 'images',
+        isDirectory: true,
       })),
     ).rejects.toThrow('Directory download queueing failed: Remote path is absolute');
 
@@ -473,6 +481,11 @@ describe('registerTransferHandlers', () => {
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'ftp' as never })),
     ).rejects.toThrow('Connection type must be s3 or sftp');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ isDirectory: 'yes' as never })),
+    ).rejects.toThrow('isDirectory must be a boolean when provided');
     expect(enqueue).not.toHaveBeenCalled();
 
     getS3Client.mockImplementationOnce(() => {

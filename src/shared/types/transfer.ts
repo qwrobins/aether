@@ -10,6 +10,7 @@ export interface TransferRequest {
   connectionId: string;
   connectionType: ConnectionType;
   bucket?: string;
+  isDirectory?: boolean;
 }
 
 export interface TransferItem {

@@ -132,6 +132,7 @@ export function RemotePanel() {
               connectionId: activeConnectionId,
               connectionType: activeProfile.type,
               bucket: currentBucket || undefined,
+              isDirectory: Boolean(entry.isDirectory),
             };
 
             const result = await window.api.invoke('transfer:start', request);
@@ -182,6 +183,7 @@ export function RemotePanel() {
             connectionId: activeConnectionId,
             connectionType: activeProfile.type,
             bucket: currentBucket || undefined,
+            isDirectory: false,
           };
 
           const result = await window.api.invoke('transfer:start', request);
@@ -305,6 +307,7 @@ export function RemotePanel() {
         connectionId: activeConnectionId,
         connectionType: activeProfile.type,
         bucket: currentBucket || undefined,
+        isDirectory: entry.isDirectory,
       };
 
       const result = await window.api.invoke('transfer:start', request);
