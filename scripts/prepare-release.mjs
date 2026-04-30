@@ -40,6 +40,17 @@ function normalizeVersion(version) {
   return `${major}.${minor}.${patch}`;
 }
 
+function compareVersions(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) {
+      return left[i] - right[i];
+    }
+  }
+  return 0;
+}
+
 function bumpVersion(version, bump) {
   const [major, minor, patch] = parseVersion(version);
   if (bump === "major") {
@@ -206,12 +217,33 @@ function setOutput(name, value) {
   console.log(`${name}=${value}`);
 }
 
+function hasPreparedReleaseMetadata(version) {
+  if (!existsSync(".release-please-manifest.json") || !existsSync("CHANGELOG.md")) {
+    return false;
+  }
+
+  const manifest = readJson(".release-please-manifest.json");
+  const changelog = readFileSync("CHANGELOG.md", "utf8");
+  return manifest["."] === version && changelog.includes(`## [${version}]`);
+}
+
 const currentPackage = readJson("package.json");
 const previousTag = latestVersionTag();
 const packageVersion = normalizeVersion(currentPackage.version);
 const baseVersion = previousTag ? normalizeVersion(previousTag) : packageVersion;
 
 if (previousTag && packageVersion !== baseVersion) {
+  if (compareVersions(packageVersion, baseVersion) > 0 && hasPreparedReleaseMetadata(packageVersion)) {
+    setOutput("released", "true");
+    setOutput("version", packageVersion);
+    setOutput("tag", `v${packageVersion}`);
+    console.log(
+      `Release metadata for v${packageVersion} is already prepared; ` +
+        `latest tag is still ${previousTag}, so only the missing tag will be created.`,
+    );
+    process.exit(0);
+  }
+
   throw new Error(
     `package.json version ${currentPackage.version} does not match latest release tag ${previousTag}. ` +
       "Sync package.json with the latest tag before preparing the next release.",
