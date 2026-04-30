@@ -2,13 +2,31 @@ import SftpClient from 'ssh2-sftp-client';
 import { homedir } from 'node:os';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { SftpConnectionProfile } from '@shared/types/connection';
-import type { SftpTransferClient } from '@shared/types/transfer';
+import type {
+  SftpDeletePathResult,
+  SftpDeleteResult,
+  SftpTransferClient,
+} from '@shared/types/transfer';
+
+interface RecursiveListOptions {
+  maxFiles?: number;
+}
 
 function expandTilde(filePath: string): string {
   if (filePath.startsWith('~/') || filePath === '~') {
     return filePath.replace('~', homedir());
   }
   return filePath;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function assertRecursiveLimit(count: number, maxFiles: number | undefined): void {
+  if (maxFiles !== undefined && count > maxFiles) {
+    throw new Error(`Directory expansion exceeded the safe limit of ${maxFiles} files`);
+  }
 }
 
 export class SftpService {
@@ -111,29 +129,45 @@ export class SftpService {
     return { path: remotePath, entries, parentPath };
   }
 
-  /** Recursively list all files (not directories) under a path */
-  async listFilesRecursive(
+  async *walkFilesRecursive(
     connectionId: string,
     dirPath: string,
-  ): Promise<Array<{ path: string; relativePath: string; size: number }>> {
+    options: RecursiveListOptions = {},
+  ): AsyncGenerator<{ path: string; relativePath: string; size: number }> {
     const client = this.getClient(connectionId);
-    const results: Array<{ path: string; relativePath: string; size: number }> = [];
+    let fileCount = 0;
 
-    const walk = async (currentDir: string, relativePrefix: string) => {
+    const walk = async function* (
+      currentDir: string,
+      relativePrefix: string,
+    ): AsyncGenerator<{ path: string; relativePath: string; size: number }> {
       const items = await client.list(currentDir);
       for (const item of items) {
         if (item.name === '.' || item.name === '..') continue;
         const fullPath = currentDir === '/' ? `/${item.name}` : `${currentDir}/${item.name}`;
         const relativePath = relativePrefix ? `${relativePrefix}/${item.name}` : item.name;
         if (item.type === 'd') {
-          await walk(fullPath, relativePath);
+          yield* walk(fullPath, relativePath);
         } else {
-          results.push({ path: fullPath, relativePath, size: item.size || 0 });
+          fileCount++;
+          assertRecursiveLimit(fileCount, options.maxFiles);
+          yield { path: fullPath, relativePath, size: item.size || 0 };
         }
       }
     };
 
-    await walk(dirPath, '');
+    yield* walk(dirPath, '');
+  }
+
+  /** Recursively list all files (not directories) under a path */
+  async listFilesRecursive(
+    connectionId: string,
+    dirPath: string,
+  ): Promise<Array<{ path: string; relativePath: string; size: number }>> {
+    const results: Array<{ path: string; relativePath: string; size: number }> = [];
+    for await (const file of this.walkFilesRecursive(connectionId, dirPath)) {
+      results.push(file);
+    }
     return results;
   }
 
@@ -142,8 +176,10 @@ export class SftpService {
     await client.mkdir(remotePath, true);
   }
 
-  async remove(connectionId: string, paths: string[]): Promise<void> {
+  async remove(connectionId: string, paths: string[]): Promise<SftpDeleteResult> {
     const client = this.getClient(connectionId);
+    const results: SftpDeletePathResult[] = [];
+
     for (const p of paths) {
       try {
         const stat = await client.stat(p);
@@ -152,10 +188,20 @@ export class SftpService {
         } else {
           await client.delete(p);
         }
+        results.push({ path: p, success: true });
       } catch (err) {
-        console.error(`Failed to delete ${p}:`, err);
+        const error = getErrorMessage(err);
+        console.error(`[Aether] Failed to delete ${p}:`, err);
+        results.push({ path: p, success: false, error });
       }
     }
+
+    const failedCount = results.filter((result) => !result.success).length;
+    return {
+      results,
+      deletedCount: results.length - failedCount,
+      failedCount,
+    };
   }
 
   async rename(connectionId: string, oldPath: string, newPath: string): Promise<void> {

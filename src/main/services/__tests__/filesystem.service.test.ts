@@ -83,6 +83,25 @@ describe('FilesystemService', () => {
     ]);
   });
 
+  it('stops recursive walking when the safe file limit is exceeded', async () => {
+    readdirMock.mockResolvedValue([
+      { name: 'one.txt', isDirectory: () => false },
+      { name: 'two.txt', isDirectory: () => false },
+    ]);
+
+    const { FilesystemService } = await import('../filesystem.service');
+    const service = new FilesystemService();
+    const files: Array<{ path: string; relativePath: string }> = [];
+
+    await expect(async () => {
+      for await (const file of service.walkFilesRecursive('/workspace', { maxFiles: 1 })) {
+        files.push(file);
+      }
+    }).rejects.toThrow('Directory expansion exceeded the safe limit of 1 files');
+
+    expect(files).toEqual([{ path: '/workspace/one.txt', relativePath: 'one.txt' }]);
+  });
+
   it('lists linux drives while skipping inaccessible system partitions', async () => {
     execFileMock.mockResolvedValue({
       stdout: JSON.stringify({

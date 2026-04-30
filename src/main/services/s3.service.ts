@@ -15,6 +15,21 @@ import path from 'node:path';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { S3ConnectionProfile } from '@shared/types/connection';
 
+interface RecursiveListOptions {
+  maxFiles?: number;
+}
+
+function assertRecursiveLimit(count: number, maxFiles: number | undefined): void {
+  if (maxFiles !== undefined && count > maxFiles) {
+    throw new Error(`S3 prefix expansion exceeded the safe limit of ${maxFiles} objects`);
+  }
+}
+
+function normalizeRecursivePrefix(prefix: string): string {
+  if (prefix === '') return '';
+  return prefix.endsWith('/') ? prefix : prefix + '/';
+}
+
 export class S3Service {
   private clients: Map<string, S3Client> = new Map();
   private regions: Map<string, string> = new Map();
@@ -208,16 +223,16 @@ export class S3Service {
     return { path: prefix, entries, parentPath };
   }
 
-  /** List all object keys under a prefix (recursive, no delimiter) */
-  async listObjectKeysRecursive(
+  async *walkObjectKeysRecursive(
     connectionId: string,
     bucket: string,
     prefix: string,
-  ): Promise<Array<{ key: string; size: number }>> {
+    options: RecursiveListOptions = {},
+  ): AsyncGenerator<{ key: string; size: number }> {
     const client = this.getClient(connectionId);
-    const results: Array<{ key: string; size: number }> = [];
-    const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/';
+    const normPrefix = normalizeRecursivePrefix(prefix);
     let continuationToken: string | undefined;
+    let objectCount = 0;
 
     do {
       const result = await client.send(
@@ -231,11 +246,29 @@ export class S3Service {
 
       for (const obj of result.Contents || []) {
         if (obj.Key && !obj.Key.endsWith('/')) {
-          results.push({ key: obj.Key, size: obj.Size || 0 });
+          objectCount++;
+          assertRecursiveLimit(objectCount, options.maxFiles);
+          yield { key: obj.Key, size: obj.Size || 0 };
         }
       }
       continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
     } while (continuationToken);
+  }
+
+  /** List all object keys under a prefix (recursive, no delimiter) */
+  async listObjectKeysRecursive(
+    connectionId: string,
+    bucket: string,
+    prefix: string,
+    maxFiles?: number,
+  ): Promise<Array<{ key: string; size: number }>> {
+    const results: Array<{ key: string; size: number }> = [];
+    for await (const object of this.walkObjectKeysRecursive(connectionId, bucket, prefix)) {
+      results.push(object);
+      if (maxFiles !== undefined && results.length >= maxFiles) {
+        break;
+      }
+    }
 
     return results;
   }
@@ -255,7 +288,7 @@ export class S3Service {
     bucket: string,
     prefix: string,
   ): Promise<void> {
-    const normPrefix = prefix.endsWith('/') ? prefix : prefix + '/';
+    const normPrefix = normalizeRecursivePrefix(prefix);
     const keysToDelete: string[] = [];
     let continuationToken: string | undefined;
 

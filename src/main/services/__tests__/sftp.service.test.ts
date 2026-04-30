@@ -132,7 +132,52 @@ describe('SftpService', () => {
     ]);
   });
 
-  it('deletes files and directories while swallowing individual errors', async () => {
+  it('stops recursive walking when the safe file limit is exceeded', async () => {
+    const list = vi.fn().mockResolvedValue([
+      { name: 'one.txt', type: '-', size: 1 },
+      { name: 'two.txt', type: '-', size: 2 },
+    ]);
+
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+    mockClients[0].list = list;
+    const files: Array<{ path: string; relativePath: string; size: number }> = [];
+
+    await expect(async () => {
+      for await (const file of service.walkFilesRecursive('conn-1', '/remote', { maxFiles: 1 })) {
+        files.push(file);
+      }
+    }).rejects.toThrow('Directory expansion exceeded the safe limit of 1 files');
+
+    expect(files).toEqual([{ path: '/remote/one.txt', relativePath: 'one.txt', size: 1 }]);
+  });
+
+  it('reports all-success delete results for files and directories', async () => {
+    const stat = vi.fn()
+      .mockResolvedValueOnce({ isDirectory: true })
+      .mockResolvedValueOnce({ isDirectory: false });
+
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+    mockClients[0].stat = stat;
+
+    const result = await service.remove('conn-1', ['/remote/folder', '/remote/file.txt']);
+
+    expect(mockClients[0]?.rmdir).toHaveBeenCalledWith('/remote/folder', true);
+    expect(mockClients[0]?.delete).toHaveBeenCalledWith('/remote/file.txt');
+    expect(result).toEqual({
+      deletedCount: 2,
+      failedCount: 0,
+      results: [
+        { path: '/remote/folder', success: true },
+        { path: '/remote/file.txt', success: true },
+      ],
+    });
+  });
+
+  it('reports partial delete failures without hiding successful deletes', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const stat = vi.fn()
       .mockResolvedValueOnce({ isDirectory: true })
@@ -144,11 +189,45 @@ describe('SftpService', () => {
     await service.connect('conn-1', profile());
     mockClients[0].stat = stat;
 
-    await service.remove('conn-1', ['/remote/folder', '/remote/file.txt', '/remote/missing']);
+    const result = await service.remove('conn-1', ['/remote/folder', '/remote/file.txt', '/remote/missing']);
 
     expect(mockClients[0]?.rmdir).toHaveBeenCalledWith('/remote/folder', true);
     expect(mockClients[0]?.delete).toHaveBeenCalledWith('/remote/file.txt');
-    expect(consoleError).toHaveBeenCalledWith('Failed to delete /remote/missing:', expect.any(Error));
+    expect(result).toEqual({
+      deletedCount: 2,
+      failedCount: 1,
+      results: [
+        { path: '/remote/folder', success: true },
+        { path: '/remote/file.txt', success: true },
+        { path: '/remote/missing', success: false, error: 'missing' },
+      ],
+    });
+    expect(consoleError).toHaveBeenCalledWith('[Aether] Failed to delete /remote/missing:', expect.any(Error));
+    consoleError.mockRestore();
+  });
+
+  it('reports all-failure delete results', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+    mockClients[0].stat = vi.fn()
+      .mockRejectedValueOnce(new Error('missing one'))
+      .mockRejectedValueOnce(new Error('missing two'));
+
+    const result = await service.remove('conn-1', ['/remote/one', '/remote/two']);
+
+    expect(result).toEqual({
+      deletedCount: 0,
+      failedCount: 2,
+      results: [
+        { path: '/remote/one', success: false, error: 'missing one' },
+        { path: '/remote/two', success: false, error: 'missing two' },
+      ],
+    });
+    expect(mockClients[0]?.rmdir).not.toHaveBeenCalled();
+    expect(mockClients[0]?.delete).not.toHaveBeenCalled();
     consoleError.mockRestore();
   });
 

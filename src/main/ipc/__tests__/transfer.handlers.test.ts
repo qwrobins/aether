@@ -32,6 +32,13 @@ const getS3Client = vi.fn(() => ({ kind: 's3-client' }));
 const getSftpClient = vi.fn(() => ({ kind: 'sftp-client', stat: vi.fn() }));
 const listSftpFilesRecursive = vi.fn();
 
+async function* fromMockedList<T>(mock: ReturnType<typeof vi.fn>, ...args: unknown[]): AsyncGenerator<T> {
+  const items = await mock(...args);
+  for (const item of items) {
+    yield item;
+  }
+}
+
 vi.mock('../../services/transfer.service', () => ({
   TransferService: class TransferService {
     setWindow = setWindow;
@@ -48,6 +55,7 @@ vi.mock('../../services/filesystem.service', () => ({
   FilesystemService: class FilesystemService {
     stat = stat;
     listFilesRecursive = listFilesRecursive;
+    walkFilesRecursive = (dirPath: string) => fromMockedList(listFilesRecursive, dirPath);
   },
 }));
 
@@ -55,6 +63,8 @@ vi.mock('../s3.handlers', () => ({
   s3Service: {
     getClient: getS3Client,
     listObjectKeysRecursive,
+    walkObjectKeysRecursive: (connectionId: string, bucket: string, prefix: string) =>
+      fromMockedList(listObjectKeysRecursive, connectionId, bucket, prefix),
   },
 }));
 
@@ -63,6 +73,8 @@ vi.mock('../sftp.handlers', () => ({
     getClient: getSftpClient,
     createTransferClient: vi.fn(async () => ({ kind: 'transfer-sftp-client' })),
     listFilesRecursive: listSftpFilesRecursive,
+    walkFilesRecursive: (connectionId: string, path: string) =>
+      fromMockedList(listSftpFilesRecursive, connectionId, path),
   },
 }));
 
@@ -180,6 +192,23 @@ describe('registerTransferHandlers', () => {
       sourcePath: 'photos/2026/a.jpg',
       destinationPath: '/downloads/photos/a.jpg',
     });
+  });
+
+  it('returns an empty S3 directory expansion instead of queueing a single object download', async () => {
+    listObjectKeysRecursive.mockResolvedValue([]);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 's3',
+      sourcePath: 'photos/empty',
+      destinationPath: '/downloads/photos/',
+      bucket: 'images',
+    }));
+
+    expect(result).toEqual([]);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 
   it('allows safe remote names that start with two dots', async () => {

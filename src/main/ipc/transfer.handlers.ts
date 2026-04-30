@@ -10,6 +10,7 @@ import type { TransferRequest, TransferItem } from '@shared/types/transfer';
 const transferService = new TransferService();
 const fs = new FilesystemService();
 const WINDOWS_ROOT_PATTERN = /^[A-Za-z]:[\\/]?$/;
+const MAX_RECURSIVE_TRANSFER_FILES = 10000;
 
 function isWindowsRootPath(filePath: string): boolean {
   return WINDOWS_ROOT_PATTERN.test(filePath);
@@ -148,13 +149,14 @@ export function registerTransferHandlers(
         try {
           const stat = await fs.stat(request.sourcePath);
           if (stat.isDirectory) {
-            const files = await fs.listFilesRecursive(request.sourcePath);
-            if (files.length === 0) return [];
             const items: TransferItem[] = [];
             const transferIds: string[] = [];
             const destBase = request.destinationPath.replace(/\/$/, '');
             try {
-              for (const { path: filePath, relativePath } of files) {
+              for await (const { path: filePath, relativePath } of fs.walkFilesRecursive(
+                request.sourcePath,
+                { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
+              )) {
                 const subDest = `${destBase}/${relativePath}`;
                 const subRequest: TransferRequest = { ...request, sourcePath: filePath, destinationPath: subDest };
                 const transfer = await enqueueTransferItem(subRequest, transferIds);
@@ -164,6 +166,7 @@ export function registerTransferHandlers(
               rollbackQueuedTransfers(transferIds);
               throw error;
             }
+            if (items.length === 0) return [];
             console.log(`[Aether] Directory upload expanded to ${items.length} file(s)`);
             return items;
           }
@@ -175,38 +178,45 @@ export function registerTransferHandlers(
         try {
           if (request.connectionType === 's3' && request.bucket) {
             const prefix = request.sourcePath.endsWith('/') ? request.sourcePath : request.sourcePath + '/';
-            const files = await s3Service.listObjectKeysRecursive(request.connectionId, request.bucket, prefix);
-            if (files.length > 0) {
-              const items: TransferItem[] = [];
-              const transferIds: string[] = [];
-              const destBase = getDownloadDestinationBase(request.destinationPath);
-              try {
-                for (const { key, size } of files) {
-                  const relativePath = key.slice(prefix.length);
-                  if (relativePath.trim() === '') continue;
-                  const subDest = safeJoinDownloadDestination(destBase, relativePath);
-                  const subRequest: TransferRequest = { ...request, sourcePath: key, destinationPath: subDest };
-                  const transfer = await enqueueTransferItem(subRequest, transferIds, size);
-                  items.push(transfer);
-                }
-              } catch (error) {
-                rollbackQueuedTransfers(transferIds);
-                throw error;
+            const items: TransferItem[] = [];
+            const transferIds: string[] = [];
+            const destBase = getDownloadDestinationBase(request.destinationPath);
+            try {
+              for await (const { key, size } of s3Service.walkObjectKeysRecursive(
+                request.connectionId,
+                request.bucket,
+                prefix,
+                { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
+              )) {
+                const relativePath = key.slice(prefix.length);
+                if (relativePath.trim() === '') continue;
+                const subDest = safeJoinDownloadDestination(destBase, relativePath);
+                const subRequest: TransferRequest = { ...request, sourcePath: key, destinationPath: subDest };
+                const transfer = await enqueueTransferItem(subRequest, transferIds, size);
+                items.push(transfer);
               }
+            } catch (error) {
+              rollbackQueuedTransfers(transferIds);
+              throw error;
+            }
+            if (items.length > 0) {
               console.log(`[Aether] S3 directory download expanded to ${items.length} file(s)`);
               return items;
             }
+            return [];
           } else if (request.connectionType === 'sftp') {
             const client = sftpService.getClient(request.connectionId);
             const stat = await client.stat(request.sourcePath);
             if (stat.isDirectory) {
-              const files = await sftpService.listFilesRecursive(request.connectionId, request.sourcePath);
-              if (files.length === 0) return [];
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
               const destBase = getDownloadDestinationBase(request.destinationPath);
               try {
-                for (const { path: remotePath, relativePath, size } of files) {
+                for await (const { path: remotePath, relativePath, size } of sftpService.walkFilesRecursive(
+                  request.connectionId,
+                  request.sourcePath,
+                  { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
+                )) {
                   if (relativePath == null || relativePath.trim() === '') continue;
                   const subDest = safeJoinDownloadDestination(destBase, relativePath);
                   const subRequest: TransferRequest = { ...request, sourcePath: remotePath, destinationPath: subDest };
@@ -217,6 +227,7 @@ export function registerTransferHandlers(
                 rollbackQueuedTransfers(transferIds);
                 throw error;
               }
+              if (items.length === 0) return [];
               console.log(`[Aether] SFTP directory download expanded to ${items.length} file(s)`);
               return items;
             }
