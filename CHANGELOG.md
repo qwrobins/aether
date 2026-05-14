@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.13](https://github.com/qwrobins/aether/compare/v0.1.12...v0.1.13) (2026-05-14)
+
+### Automation
+
+* Dispatch release workflow with default token ([#33](https://github.com/qwrobins/aether/pull/33))
+  * remove the invalid RELEASE_TOKEN dependency from prepare-release
+  * use the default workflow token for checkout, metadata lookup, and atomic release commit/tag push
+  * add workflow_dispatch to the release workflow and explicitly dispatch it for the created tag
+  * update README release automation docs
+* Fix prepare release checkout authentication ([#32](https://github.com/qwrobins/aether/pull/32))
+  * let actions/checkout use the default workflow token for repository fetches
+  * validate RELEASE_TOKEN before release publishing work begins
+  * apply RELEASE_TOKEN only for the final release commit/tag push so tag pushes still trigger the Release workflow
+* Add macOS signing and notarization workflow ([#31](https://github.com/qwrobins/aether/pull/31))
+  * add environment-gated Electron Forge macOS signing and notarization config
+  * import Developer ID Application certificates during macOS release builds when secrets are configured
+  * document required GitHub secrets and signed release setup
+
 ## [0.1.12](https://github.com/qwrobins/aether/compare/v0.1.11...v0.1.12) (2026-04-30)
 
 ### Bug Fixes
