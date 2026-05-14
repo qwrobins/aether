@@ -9,6 +9,35 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 import path from 'node:path';
 import fs from 'node:fs';
 
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required when AETHER_SIGN_MACOS=true`);
+  }
+
+  return value;
+}
+
+function macSigningConfig() {
+  if (process.platform !== 'darwin' || process.env.AETHER_SIGN_MACOS !== 'true') {
+    return {};
+  }
+
+  const osxSign: Record<string, string> = {};
+  if (process.env.MACOS_SIGN_IDENTITY) {
+    osxSign.identity = process.env.MACOS_SIGN_IDENTITY;
+  }
+
+  return {
+    osxSign,
+    osxNotarize: {
+      appleId: requireEnv('APPLE_ID'),
+      appleIdPassword: requireEnv('APPLE_APP_SPECIFIC_PASSWORD'),
+      teamId: requireEnv('APPLE_TEAM_ID'),
+    },
+  };
+}
+
 /** Copy externalized production dependencies and their full transitive tree. */
 function copyExternalModules(
   _buildPath: string,
@@ -80,6 +109,7 @@ const config: ForgeConfig = {
     executableName: 'aether',
     icon: path.resolve(__dirname, 'assets/icon'),
     afterCopy: [copyExternalModules],
+    ...macSigningConfig(),
   },
   rebuildConfig: {},
   makers: [
