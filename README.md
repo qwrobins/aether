@@ -108,7 +108,7 @@ Creates distributable installers. Configured makers:
 | Platform | Format |
 |---|---|
 | Windows | Squirrel |
-| macOS | ZIP |
+| macOS | DMG |
 | Linux | DEB, RPM, AppImage |
 
 ### Release Automation
@@ -117,9 +117,30 @@ Merging a releasable conventional commit to `main` runs `.github/workflows/prepa
 
 Configure `secrets.RELEASE_TOKEN` with a Personal Access Token or GitHub App token that can push contents and trigger workflows. Do not replace it with the default `github.token`; tags pushed with `github.token` do not trigger the tag-based `release.yml` workflow.
 
+### Signed macOS Releases
+
+Tagged macOS releases are signed and notarized by GitHub Actions when all signing secrets are configured. Until then, the workflow continues to build an unsigned DMG.
+
+| Secret | Description |
+|---|---|
+| `MACOS_CERTIFICATE_BASE64` | Base64-encoded `.p12` export of the Developer ID Application certificate |
+| `MACOS_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` certificate |
+| `APPLE_ID` | Apple ID email for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for the Apple ID |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
+| `MACOS_SIGN_IDENTITY` | Optional exact `Developer ID Application: ...` identity name |
+
+To create `MACOS_CERTIFICATE_BASE64` after exporting the certificate from Keychain Access:
+
+```bash
+base64 -i DeveloperIDApplication.p12 | pbcopy
+```
+
+Local macOS builds remain unsigned unless `AETHER_SIGN_MACOS=true` and the notarization environment variables are present.
+
 ### macOS — "App is Damaged" Warning
 
-macOS will block the app with a "damaged" error because the build is unsigned. Run this once in Terminal after installing:
+Unsigned local builds may be blocked by macOS with a "damaged" error. Run this once in Terminal after installing an unsigned build:
 
 ```bash
 xattr -cr /Applications/Aether.app

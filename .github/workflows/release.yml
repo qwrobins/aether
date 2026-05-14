@@ -100,7 +100,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Import macOS signing certificate
+        if: matrix.platform == 'macos'
+        env:
+          MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${MACOS_CERTIFICATE_BASE64}" || -z "${MACOS_CERTIFICATE_PASSWORD}" ]]; then
+            echo "macOS signing certificate secrets are not configured; building an unsigned DMG." >&2
+            exit 0
+          fi
+
+          certificate_path="${RUNNER_TEMP}/developer-id-application.p12"
+          keychain_path="${RUNNER_TEMP}/aether-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+
+          echo "${MACOS_CERTIFICATE_BASE64}" | base64 -D > "${certificate_path}"
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security import "${certificate_path}" -P "${MACOS_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain_path}"
+          security list-keychains -d user -s "${keychain_path}" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychain_password}" "${keychain_path}"
+          security find-identity -v -p codesigning "${keychain_path}"
+
       - name: Build distributables
+        env:
+          AETHER_SIGN_MACOS: ${{ matrix.platform == 'macos' && secrets.MACOS_CERTIFICATE_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: npm run make
 
       - name: Collect release assets
