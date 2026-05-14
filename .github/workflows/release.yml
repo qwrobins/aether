@@ -101,6 +101,7 @@ jobs:
         run: npm ci
 
       - name: Import macOS signing certificate
+        id: import-macos-cert
         if: matrix.platform == 'macos'
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
@@ -111,6 +112,7 @@ jobs:
 
           if [[ -z "${MACOS_CERTIFICATE_BASE64}" || -z "${MACOS_CERTIFICATE_PASSWORD}" ]]; then
             echo "macOS signing certificate secrets are not configured; building an unsigned DMG." >&2
+            echo "macos_identity_present=false" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -125,11 +127,19 @@ jobs:
           security import "${certificate_path}" -P "${MACOS_CERTIFICATE_PASSWORD}" -A -t cert -f pkcs12 -k "${keychain_path}"
           security list-keychains -d user -s "${keychain_path}" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${keychain_password}" "${keychain_path}"
-          security find-identity -v -p codesigning "${keychain_path}"
+          identities="$(security find-identity -v -p codesigning "${keychain_path}")"
+          echo "${identities}"
+
+          if grep -q "Developer ID Application" <<< "${identities}"; then
+            echo "macos_identity_present=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No Developer ID Application identity was found after importing the macOS signing certificate; building an unsigned DMG." >&2
+            echo "macos_identity_present=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Build distributables
         env:
-          AETHER_SIGN_MACOS: ${{ matrix.platform == 'macos' && secrets.MACOS_CERTIFICATE_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && 'true' || 'false' }}
+          AETHER_SIGN_MACOS: ${{ matrix.platform == 'macos' && secrets.MACOS_CERTIFICATE_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && steps.import-macos-cert.outputs.macos_identity_present == 'true' && 'true' || 'false' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
