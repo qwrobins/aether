@@ -6,6 +6,7 @@ on:
       - main
 
 permissions:
+  actions: write
   contents: write
   pull-requests: read
 
@@ -19,22 +20,13 @@ jobs:
     runs-on: ubuntu-22.04
     if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     steps:
-      - name: Verify release token
+      - name: Verify workflow token
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          if [ -z "$RELEASE_TOKEN" ]; then
-            echo "RELEASE_TOKEN is required so pushed release tags trigger the Release workflow." >&2
-            exit 1
-          fi
-
-          if ! gh auth status >/dev/null 2>&1; then
-            echo "RELEASE_TOKEN is not a valid GitHub credential for release publishing." >&2
-            exit 1
-          fi
+          gh auth status >/dev/null
 
       - name: Check out repository
         uses: actions/checkout@v4
@@ -53,7 +45,7 @@ jobs:
       - name: Prepare release metadata
         id: prepare
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: npm run release:prepare
 
       - name: Commit release metadata
@@ -74,13 +66,63 @@ jobs:
 
       - name: Tag release
         if: steps.prepare.outputs.released == 'true'
-        run: git tag "v${{ steps.prepare.outputs.version }}"
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.prepare.outputs.version }}"
+          head_commit="$(git rev-parse HEAD)"
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "${tag}")"
+            if [ "${tag_commit}" = "${head_commit}" ]; then
+              echo "Tag ${tag} already exists locally and points to HEAD; reusing it."
+            else
+              echo "Tag ${tag} exists locally at ${tag_commit}, expected ${head_commit}; recreating it."
+              git tag -f "${tag}"
+            fi
+          else
+            git tag "${tag}"
+          fi
 
       - name: Push release commit and tag
         if: steps.prepare.outputs.released == 'true'
-        env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --atomic origin HEAD:main "v${{ steps.prepare.outputs.version }}"
+          tag="v${{ steps.prepare.outputs.version }}"
+          tag_commit="$(git rev-list -n 1 "${tag}")"
+
+          if ! git push --atomic origin HEAD:main "${tag}"; then
+            remote_tag_commit="$(git ls-remote --tags origin "refs/tags/${tag}" | awk '{print $1}')"
+            if [ -z "${remote_tag_commit}" ]; then
+              echo "Atomic push failed and ${tag} does not exist on origin." >&2
+              exit 1
+            fi
+
+            if [ "${remote_tag_commit}" != "${tag_commit}" ]; then
+              echo "Remote tag ${tag} points to ${remote_tag_commit}, expected ${tag_commit}." >&2
+              exit 1
+            fi
+
+            echo "Tag ${tag} already exists on origin at ${remote_tag_commit}; pushing release metadata only."
+            git push origin HEAD:main
+          fi
+
+      - name: Dispatch release workflow
+        if: steps.prepare.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v${{ steps.prepare.outputs.version }}"
+
+          for attempt in 1 2 3; do
+            if gh workflow run release.yml --ref "${tag}"; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 3 ]; then
+              echo "Failed to dispatch release workflow for ${tag} after ${attempt} attempts." >&2
+              exit 1
+            fi
+
+            sleep $((attempt * 5))
+          done
