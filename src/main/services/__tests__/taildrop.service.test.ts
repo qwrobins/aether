@@ -96,10 +96,40 @@ describe('TaildropService', () => {
         2,
         '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
         ['version'],
-        expect.objectContaining({ windowsHide: true }),
+        expect.objectContaining({
+          env: expect.objectContaining({ SHLVL: expect.any(String) }),
+          windowsHide: true,
+        }),
       );
     } finally {
       platformSpy.mockRestore();
+    }
+  });
+
+  it('provides SHLVL when launching the Tailscale command from GUI environments', async () => {
+    const originalShellLevel = process.env.SHLVL;
+    delete process.env.SHLVL;
+    execFileMock.mockResolvedValue({ stdout: '1.98.2', stderr: '' });
+
+    try {
+      const { TaildropService } = await import('../taildrop.service');
+      const service = new TaildropService();
+
+      await service.getAvailability();
+
+      expect(execFileMock).toHaveBeenCalledWith(
+        'tailscale',
+        ['version'],
+        expect.objectContaining({
+          env: expect.objectContaining({ SHLVL: '1' }),
+        }),
+      );
+    } finally {
+      if (originalShellLevel === undefined) {
+        delete process.env.SHLVL;
+      } else {
+        process.env.SHLVL = originalShellLevel;
+      }
     }
   });
 
