@@ -1,6 +1,6 @@
 # Aether
 
-A modern desktop file transfer application for **AWS S3** and **SFTP**, built with Electron, React, and a custom dark UI theme.
+A modern desktop file transfer application for **AWS S3**, **SFTP**, and **Tailscale Taildrop**, built with Electron, React, and a custom dark UI theme.
 
 Aether provides a dual-pane file manager with drag-and-drop transfers, multiple simultaneous connections, recursive directory operations, and encrypted credential storage — all wrapped in a warm indigo-tinted interface designed to feel atmospheric rather than flat.
 
@@ -17,11 +17,21 @@ Aether provides a dual-pane file manager with drag-and-drop transfers, multiple 
 ### File Transfer
 - **AWS S3** — browse buckets, upload/download objects, create folders, batch delete with retry
 - **SFTP** — password or SSH key authentication, full remote filesystem browsing
+- **Tailscale Taildrop** — send local files to eligible tailnet devices from a built-in destination pane
 - **Drag and drop** between panels or from the OS file manager
 - **Recursive directory transfers** — directories are automatically expanded into individual file transfers
 - **Concurrent transfers** — up to 3 simultaneous transfers via a managed queue (p-queue)
 - **Progress tracking** — real-time speed, bytes transferred, animated progress bars
 - **Automatic retry** — failed transfers retry up to 3 times with exponential backoff
+
+### Tailscale Taildrop
+- Tailscale is a built-in destination mode, not a saved connection profile.
+- Aether uses the local `tailscale` CLI and the user's existing Tailscale session; no Tailscale credentials are stored.
+- The right pane lists Taildrop targets from `tailscale file cp --targets`, including offline device states.
+- Sending uses `tailscale file cp <file> <target>:` and records file-level status in the transfer/history area.
+- On Linux, received files can be collected into the current local folder with `tailscale file get <folder>`.
+- On macOS and Windows, received files are handled by the Tailscale desktop client/OS Downloads flow.
+- Taildrop is documented by Tailscale as alpha; unsupported, disabled, or unavailable states are surfaced in the UI.
 
 ### Connection Management
 - Save and manage multiple S3 and SFTP connection profiles
@@ -59,6 +69,7 @@ Aether provides a dual-pane file manager with drag-and-drop transfers, multiple 
 | State | Zustand (5 stores) |
 | S3 | @aws-sdk/client-s3, @aws-sdk/lib-storage, @aws-sdk/credential-providers |
 | SFTP | ssh2-sftp-client |
+| Taildrop | Local Tailscale CLI |
 | Transfers | p-queue (concurrency control) |
 | Storage | electron-store (JSON) + Electron safeStorage (encryption) |
 | Fonts | Geist Sans, Geist Mono |
@@ -171,6 +182,7 @@ src/
 │   │   ├── filesystem.handlers.ts # Local filesystem ops
 │   │   ├── s3.handlers.ts         # S3 connect/disconnect + object ops
 │   │   ├── sftp.handlers.ts       # SFTP connect/disconnect + file ops
+│   │   ├── taildrop.handlers.ts   # Taildrop target/receive IPC
 │   │   └── transfer.handlers.ts   # Transfer queue management
 │   ├── services/                  # Business logic
 │   │   ├── connection.service.ts  # Profile storage + encryption
@@ -178,6 +190,7 @@ src/
 │   │   ├── filesystem.service.ts  # Local fs operations
 │   │   ├── s3.service.ts          # AWS S3 client + operations
 │   │   ├── sftp.service.ts        # SSH2 SFTP client + operations
+│   │   ├── taildrop.service.ts    # Local Tailscale CLI operations
 │   │   └── transfer.service.ts    # Transfer engine (p-queue)
 │   └── utils/
 │       └── store.ts               # JSON file persistence
@@ -194,7 +207,7 @@ src/
 │   │   ├── transfer/              # TransferQueue, TransferItem
 │   │   └── ui/                    # 21 shadcn/ui primitives
 │   ├── hooks/                     # useKeyboardShortcuts, useTransferEvents, useFileSystem
-│   └── stores/                    # Zustand stores (connection, local, remote, transfer, ui)
+│   └── stores/                    # Zustand stores (connection, local, remote, taildrop, transfer, ui)
 └── shared/                        # Cross-process (types only)
     ├── constants/
     │   └── channels.ts            # IPC channel name constants
@@ -202,6 +215,7 @@ src/
         ├── connection.ts          # S3/SFTP profile types
         ├── filesystem.ts          # FileEntry, DirectoryListing
         ├── ipc.ts                 # Fully typed IPC map
+        ├── taildrop.ts            # Taildrop target/status types
         └── transfer.ts            # Transfer item/request/progress types
 ```
 
@@ -230,6 +244,7 @@ All channels are defined in `src/shared/constants/channels.ts` and typed in `src
 | Connections | `conn:list`, `conn:save`, `conn:delete`, `conn:test`, `conn:connect`, `conn:disconnect` |
 | S3 | `s3:list-buckets`, `s3:list-objects`, `s3:delete-object`, `s3:create-folder`, `s3:list-profiles`, `s3:list-roles` |
 | SFTP | `sftp:list`, `sftp:mkdir`, `sftp:delete`, `sftp:rename` |
+| Taildrop | `taildrop:status`, `taildrop:list-targets`, `taildrop:receive` |
 | Transfers | `transfer:start`, `transfer:cancel`, `transfer:clear`, `transfer:list` |
 | Events | `transfer:progress`, `transfer:complete`, `transfer:error` |
 | Window | `window:close`, `window:minimize`, `window:maximize` |

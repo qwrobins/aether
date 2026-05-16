@@ -23,6 +23,11 @@ export const IpcChannels = {
   SFTP_DELETE: 'sftp:delete',
   SFTP_RENAME: 'sftp:rename',
 
+  // Taildrop / Tailscale
+  TAILDROP_STATUS: 'taildrop:status',
+  TAILDROP_LIST_TARGETS: 'taildrop:list-targets',
+  TAILDROP_RECEIVE: 'taildrop:receive',
+
   // Connections
   CONN_SAVE: 'conn:save',
   CONN_DELETE: 'conn:delete',

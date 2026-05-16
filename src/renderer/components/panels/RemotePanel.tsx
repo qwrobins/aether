@@ -9,6 +9,7 @@ import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { TaildropPanel } from './TaildropPanel';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CloudOff, Database, ChevronLeft } from 'lucide-react';
@@ -69,6 +70,7 @@ export function RemotePanel() {
   const {
     activeConnectionId,
     activeProfile,
+    mode,
     connectionStatus,
     connectionError,
     currentBucket,
@@ -336,6 +338,10 @@ export function RemotePanel() {
     },
     [activeConnectionId, activeProfile, currentBucket]
   );
+
+  if (mode === 'taildrop') {
+    return <TaildropPanel />;
+  }
 
   // State 1: No connection
   if (!activeConnectionId) {

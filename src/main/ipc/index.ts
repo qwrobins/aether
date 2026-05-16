@@ -4,6 +4,7 @@ import { registerConnectionHandlers } from './connection.handlers';
 import { registerS3Handlers } from './s3.handlers';
 import { registerSftpHandlers } from './sftp.handlers';
 import { registerTransferHandlers } from './transfer.handlers';
+import { registerTaildropHandlers } from './taildrop.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 
 export function registerAllIpcHandlers(mainWindow: BrowserWindow): void {
@@ -12,6 +13,7 @@ export function registerAllIpcHandlers(mainWindow: BrowserWindow): void {
   registerSftpHandlers(ipcMain);
   registerS3Handlers(ipcMain);
   registerTransferHandlers(ipcMain, mainWindow);
+  registerTaildropHandlers(ipcMain);
 
   ipcMain.handle(IpcChannels.WINDOW_CLOSE, () => mainWindow?.close());
   ipcMain.handle(IpcChannels.WINDOW_MINIMIZE, () => mainWindow?.minimize());

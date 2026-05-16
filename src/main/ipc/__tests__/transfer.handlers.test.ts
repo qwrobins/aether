@@ -480,7 +480,7 @@ describe('registerTransferHandlers', () => {
 
     await expect(
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'ftp' as never })),
-    ).rejects.toThrow('Connection type must be s3 or sftp');
+    ).rejects.toThrow('Connection type must be s3, sftp, or taildrop');
     expect(enqueue).not.toHaveBeenCalled();
 
     await expect(
@@ -503,5 +503,49 @@ describe('registerTransferHandlers', () => {
       handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({ connectionType: 'sftp' })),
     ).rejects.toThrow('Connection not found');
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('queues Taildrop uploads and rejects unsupported Taildrop requests', async () => {
+    stat.mockResolvedValue({ isDirectory: false });
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        connectionId: 'taildrop',
+        connectionType: 'taildrop',
+        direction: 'upload',
+        destinationPath: 'ec2-dev',
+        bucket: undefined,
+        isDirectory: false,
+      })),
+    ).resolves.toBe('transfer-1');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+
+    enqueue.mockClear();
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        connectionId: 'taildrop',
+        connectionType: 'taildrop',
+        direction: 'download',
+        destinationPath: 'ec2-dev',
+        bucket: undefined,
+      })),
+    ).rejects.toThrow('Taildrop only supports sending local files');
+    expect(enqueue).not.toHaveBeenCalled();
+
+    stat.mockResolvedValueOnce({ isDirectory: true });
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        connectionId: 'taildrop',
+        connectionType: 'taildrop',
+        direction: 'upload',
+        sourcePath: '/tmp/my-directory',
+        destinationPath: 'ec2-dev',
+        bucket: undefined,
+        isDirectory: false,
+      })),
+    ).rejects.toThrow('Taildrop directory sends are not supported yet');
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(stat).toHaveBeenCalledWith('/tmp/my-directory');
   });
 });

@@ -16,6 +16,10 @@ import type {
 import { IpcChannels } from '@shared/constants/channels';
 
 type SftpClientFactory = (connectionId: string) => Promise<SftpTransferClient>;
+type TaildropSender = (
+  item: TransferItem,
+  signal?: AbortSignal,
+) => Promise<void>;
 
 class NonRetryableError extends Error {
   constructor(message: string) {
@@ -62,6 +66,7 @@ export class TransferService {
   private sftpClients: Map<string, SftpTransferClient> = new Map();
   private terminalTransfers: Set<string> = new Set();
   private sftpClientFactory?: SftpClientFactory;
+  private taildropSender?: TaildropSender;
   private window: BrowserWindow | null = null;
 
   constructor(concurrency = 3) {
@@ -74,6 +79,10 @@ export class TransferService {
 
   setSftpClientFactory(factory: SftpClientFactory): void {
     this.sftpClientFactory = factory;
+  }
+
+  setTaildropSender(sender: TaildropSender): void {
+    this.taildropSender = sender;
   }
 
   getTransfers(): TransferItem[] {
@@ -147,6 +156,8 @@ export class TransferService {
       } else if (item.connectionType === 'sftp') {
         const sftpClient = await this.getOrCreateSftpTransferClient(item.id, item.connectionId);
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
+      } else if (item.connectionType === 'taildrop') {
+        await this.executeTaildropTransfer(item, signal, startTime);
       }
 
       if (signal?.aborted) {
@@ -163,7 +174,11 @@ export class TransferService {
         item.error = getErrorMessage(error);
         this.emitError(item.id, item.error);
 
-        if (!(error instanceof NonRetryableError) && item.retryCount < 3) {
+        if (
+          item.connectionType !== 'taildrop' &&
+          !(error instanceof NonRetryableError) &&
+          item.retryCount < 3
+        ) {
           item.retryCount++;
           item.status = 'queued';
           item.bytesTransferred = 0;
@@ -334,6 +349,41 @@ export class TransferService {
       if (signal?.aborted) throw new Error('Aborted');
       await this.finalizeDownload(item);
     }
+  }
+
+  private async executeTaildropTransfer(
+    item: TransferItem,
+    signal?: AbortSignal,
+    startTime?: number,
+  ): Promise<void> {
+    if (item.direction !== 'upload') {
+      throw new NonRetryableError('Taildrop only supports sending local files');
+    }
+    if (!this.taildropSender) {
+      throw new NonRetryableError('Tailscale Taildrop is not available');
+    }
+
+    const fileStat = await stat(item.sourcePath);
+    if (fileStat.isDirectory()) {
+      throw new NonRetryableError('Taildrop directory sends are not supported yet');
+    }
+
+    item.size = fileStat.size;
+    item.bytesTransferred = 0;
+    item.speed = 0;
+    this.emitProgress(item.id, 0, item.size, 0);
+
+    try {
+      await this.taildropSender(item, signal);
+    } catch (error) {
+      throw new NonRetryableError(getErrorMessage(error));
+    }
+    if (signal?.aborted) throw new Error('Aborted');
+
+    item.bytesTransferred = item.size;
+    const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
+    item.speed = elapsed > 0 && item.size > 0 ? item.size / elapsed : 0;
+    this.emitProgress(item.id, item.size, item.size, item.speed);
   }
 
   cancel(id: string): void {

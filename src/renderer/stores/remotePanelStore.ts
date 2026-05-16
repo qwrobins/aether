@@ -3,6 +3,8 @@ import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/type
 import type { ConnectionProfile, ConnectionStatus, S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
 
 interface RemotePanelState {
+  mode: 'connection' | 'taildrop';
+
   // Connection state
   activeConnectionId: string | null;
   activeProfile: ConnectionProfile | null;
@@ -27,6 +29,7 @@ interface RemotePanelState {
   // Connection actions
   connect: (profile: ConnectionProfile) => Promise<void>;
   disconnect: () => Promise<void>;
+  activateTaildrop: () => void;
 
   // S3 actions
   loadBuckets: () => Promise<void>;
@@ -83,6 +86,7 @@ function getParentPath(path: string): string {
 }
 
 const initialState = {
+  mode: 'connection' as const,
   activeConnectionId: null as string | null,
   activeProfile: null as ConnectionProfile | null,
   connectionStatus: 'disconnected' as ConnectionStatus,
@@ -105,12 +109,17 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
 
   connect: async (profile: ConnectionProfile) => {
     set({
+      mode: 'connection',
       connectionStatus: 'connecting',
       connectionError: null,
       activeProfile: profile,
     });
     try {
       await window.api.invoke('conn:connect', profile.id);
+      const current = get();
+      if (current.mode !== 'connection' || current.activeProfile?.id !== profile.id) {
+        return;
+      }
       set({
         connectionStatus: 'connected',
         activeConnectionId: profile.id,
@@ -147,6 +156,14 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       }
     }
     set({ ...initialState });
+  },
+
+  activateTaildrop: () => {
+    set({
+      ...initialState,
+      mode: 'taildrop',
+      connectionStatus: 'connected',
+    });
   },
 
   loadBuckets: async () => {
@@ -209,7 +226,8 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   refresh: async () => {
-    const { currentPath, currentBucket, activeProfile, navigateTo, loadBuckets } = get();
+    const { mode, currentPath, currentBucket, activeProfile, navigateTo, loadBuckets } = get();
+    if (mode === 'taildrop') return;
     if (activeProfile?.type === 'sftp') {
       await navigateTo(currentPath);
     } else if (currentBucket) {

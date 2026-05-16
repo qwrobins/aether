@@ -1,5 +1,6 @@
 import type { ConnectionType } from './connection';
 
+export type TransferConnectionType = ConnectionType | 'taildrop';
 export type TransferDirection = 'upload' | 'download';
 export type TransferStatus = 'queued' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -8,8 +9,9 @@ export interface TransferRequest {
   destinationPath: string;
   direction: TransferDirection;
   connectionId: string;
-  connectionType: ConnectionType;
+  connectionType: TransferConnectionType;
   bucket?: string;
+  targetName?: string;
   isDirectory?: boolean;
 }
 
@@ -21,8 +23,9 @@ export interface TransferItem {
   tempPath?: string;
   direction: TransferDirection;
   connectionId: string;
-  connectionType: ConnectionType;
+  connectionType: TransferConnectionType;
   bucket?: string;
+  targetName?: string;
   size: number;
   bytesTransferred: number;
   status: TransferStatus;

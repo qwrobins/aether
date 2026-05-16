@@ -68,7 +68,7 @@ function normalizeS3Prefix(sourcePath: string): string {
   return sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`;
 }
 
-function validateTransferRequest(request: TransferRequest) {
+async function validateTransferRequest(request: TransferRequest) {
   if (!request.connectionId || typeof request.connectionId !== 'string') {
     throw new Error('Connection ID is required');
   }
@@ -88,12 +88,27 @@ function validateTransferRequest(request: TransferRequest) {
     throw new Error('Transfer direction must be upload or download');
   }
 
-  if (request.connectionType !== 's3' && request.connectionType !== 'sftp') {
-    throw new Error('Connection type must be s3 or sftp');
+  if (
+    request.connectionType !== 's3' &&
+    request.connectionType !== 'sftp' &&
+    request.connectionType !== 'taildrop'
+  ) {
+    throw new Error('Connection type must be s3, sftp, or taildrop');
   }
 
   if (request.isDirectory !== undefined && typeof request.isDirectory !== 'boolean') {
     throw new Error('isDirectory must be a boolean when provided');
+  }
+
+  if (request.connectionType === 'taildrop') {
+    if (request.direction !== 'upload') {
+      throw new Error('Taildrop only supports sending local files');
+    }
+    const sourceStat = await fs.stat(request.sourcePath);
+    if (sourceStat.isDirectory) {
+      throw new Error('Taildrop directory sends are not supported yet');
+    }
+    return { s3Client: undefined };
   }
 
   try {
@@ -124,7 +139,7 @@ export function registerTransferHandlers(
   ipcMain.handle(
     IpcChannels.TRANSFER_START,
     async (_event, request: TransferRequest): Promise<string | TransferItem[]> => {
-      const { s3Client } = validateTransferRequest(request);
+      const { s3Client } = await validateTransferRequest(request);
 
       const enqueueTransfer = async (
         transferRequest: TransferRequest,
@@ -158,6 +173,16 @@ export function registerTransferHandlers(
 
       // Directory expansion: recursively list files and queue each
       if (request.direction === 'upload') {
+        if (request.connectionType === 'taildrop') {
+          const sourceStat = await fs.stat(request.sourcePath);
+          if (sourceStat.isDirectory) {
+            throw new Error('Taildrop directory sends are not supported yet');
+          }
+          const id = await enqueueTransfer(request);
+          console.log(`[Aether] Transfer queued: ${id}`);
+          return id;
+        }
+
         try {
           const stat = await fs.stat(request.sourcePath);
           if (stat.isDirectory) {

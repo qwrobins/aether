@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.14](https://github.com/qwrobins/aether/compare/v0.1.13...v0.1.14) (2026-05-16)
+
+### Features
+
+* Add Tailscale Taildrop support
+  * Add a built-in Tailscale destination that lists Taildrop-capable tailnet devices instead of remote files.
+  * Queue local file sends to Taildrop devices with file-level transfer status and Taildrop history.
+  * Add Linux receive collection through `tailscale file get` into the current local folder.
+  * Surface missing, unavailable, offline, and platform-specific Taildrop states through typed IPC.
+
 ## [0.1.13](https://github.com/qwrobins/aether/compare/v0.1.12...v0.1.13) (2026-05-14)
 
 ### Automation
