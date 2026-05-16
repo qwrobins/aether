@@ -87,6 +87,7 @@ export function RemotePanel() {
     loadBuckets,
     selectFile,
     setSort,
+    setViewMode,
   } = useRemotePanelStore();
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -347,7 +348,15 @@ export function RemotePanel() {
   if (!activeConnectionId) {
     return (
       <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
-        <PanelHeader label="Remote" path="" isActive={false} onNavigate={() => void 0} onRefresh={() => void 0} />
+        <PanelHeader
+          label="Remote"
+          path=""
+          isActive={false}
+          viewMode={viewMode}
+          onNavigate={() => void 0}
+          onRefresh={() => void 0}
+          onViewModeChange={setViewMode}
+        />
         {connectionStatus === 'connecting' ? (
           <div className="flex flex-1 items-center justify-center">
             <div className="flex flex-col items-center gap-3">
@@ -384,9 +393,11 @@ export function RemotePanel() {
           label={`SFTP: ${activeProfile.name}`}
           path={currentPath}
           isActive={true}
+          viewMode={viewMode}
           onNavigate={navigateTo}
           onRefresh={refresh}
           onNewFolder={handleNewFolder}
+          onViewModeChange={setViewMode}
         />
 
         {error && (
@@ -423,8 +434,10 @@ export function RemotePanel() {
           label={`S3: ${activeProfile.name}`}
           path=""
           isActive={true}
+          viewMode={viewMode}
           onNavigate={() => void 0}
           onRefresh={loadBuckets}
+          onViewModeChange={setViewMode}
         />
         <BucketList />
       </div>
@@ -446,9 +459,11 @@ export function RemotePanel() {
         label={`S3: ${currentBucket}`}
         path={currentPath}
         isActive={true}
+        viewMode={viewMode}
         onNavigate={navigateTo}
         onRefresh={refresh}
         onNewFolder={handleNewFolder}
+        onViewModeChange={setViewMode}
         breadcrumbMode="s3-prefix"
       />
 

@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Toaster } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { useTheme } from '@/hooks/useTheme';
+import { useTransferEvents } from '@/hooks/useTransferEvents';
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -35,18 +37,31 @@ class ErrorBoundary extends Component<
   }
 }
 
+function ThemeProvider({ children }: { children: ReactNode }) {
+  useTheme();
+  return children;
+}
+
+function AppEventBridge() {
+  useTransferEvents();
+  return null;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
-      <AppLayout />
+      <ThemeProvider>
+        <AppEventBridge />
+        <AppLayout />
+      </ThemeProvider>
       <Toaster
         theme="dark"
         position="top-right"
         toastOptions={{
           style: {
-            background: 'oklch(0.13 0.012 280)',
-            border: '1px solid oklch(0.20 0.015 280)',
-            color: 'oklch(0.92 0.008 260)',
+            background: 'var(--color-card)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-card-foreground)',
           },
         }}
       />

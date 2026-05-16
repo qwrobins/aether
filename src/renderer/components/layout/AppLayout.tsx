@@ -69,10 +69,13 @@ export function AppLayout() {
   }, [transferHeight]);
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
+    <div
+      className="flex h-screen flex-col overflow-hidden bg-background text-foreground"
+      style={{ '--titlebar-height': '38px' } as React.CSSProperties}
+    >
       <PromptDialog />
       <TitleBar />
-      <SidebarProvider defaultOpen={true}>
+      <SidebarProvider defaultOpen={true} className="min-h-0 flex-1">
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <AppSidebar />
           <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">

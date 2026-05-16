@@ -8,7 +8,8 @@ describe('useUiStore', () => {
     useUiStore.setState({
       sidebarExpanded: true,
       transferQueueExpanded: false,
-      theme: 'dark',
+      theme: 'luminous',
+      settingsOpen: false,
     });
   });
 
@@ -23,7 +24,21 @@ describe('useUiStore', () => {
   });
 
   it('sets the selected theme', () => {
-    useUiStore.getState().setTheme('light');
-    expect(useUiStore.getState().theme).toBe('light');
+    useUiStore.getState().setTheme('carbon');
+    expect(useUiStore.getState().theme).toBe('carbon');
+  });
+
+  it('accepts all theme variants', () => {
+    const themes = ['luminous', 'obsidian', 'solarized', 'carbon', 'ocean', 'ember'] as const;
+    for (const theme of themes) {
+      useUiStore.getState().setTheme(theme);
+      expect(useUiStore.getState().theme).toBe(theme);
+    }
+  });
+
+  it('toggles settings sheet open state', () => {
+    expect(useUiStore.getState().settingsOpen).toBe(false);
+    useUiStore.getState().setSettingsOpen(true);
+    expect(useUiStore.getState().settingsOpen).toBe(true);
   });
 });

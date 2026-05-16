@@ -1,12 +1,4 @@
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  BreadcrumbEllipsis,
-} from '@/components/ui/breadcrumb';
+import { ChevronRight } from 'lucide-react';
 
 interface PathBreadcrumbProps {
   path: string;
@@ -23,7 +15,6 @@ export function PathBreadcrumb({
   const segments = normalized.split('/').filter(Boolean);
   const isS3Prefix = mode === 's3-prefix';
 
-  // On Unix, the root is "/"; on Windows it might be "C:/"
   const isUnix = normalized.startsWith('/');
   let rootLabel = '/';
   let rootPath = '/';
@@ -51,68 +42,63 @@ export function PathBreadcrumb({
   }
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList className="flex-nowrap text-[12px] gap-1">
-        <BreadcrumbItem>
-          <BreadcrumbLink
-            className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
-            onClick={() => onNavigate(rootPath)}
+    <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+      <button
+        onClick={() => onNavigate(rootPath)}
+        className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
+      >
+        {rootLabel}
+      </button>
+
+      {shouldCollapse && (
+        <>
+          <ChevronRight size={12} className="shrink-0 text-muted-foreground/30" />
+          <button
+            onClick={() => {
+              const idx = isS3Prefix || isUnix ? 0 : 1;
+              onNavigate(buildPath(idx));
+            }}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
           >
-            {rootLabel}
-          </BreadcrumbLink>
-        </BreadcrumbItem>
+            {displaySegments[0]}
+          </button>
+          <ChevronRight size={12} className="shrink-0 text-muted-foreground/30" />
+          <span className="shrink-0 px-1 text-[12px] text-muted-foreground/40">
+            &hellip;
+          </span>
+        </>
+      )}
 
-        {shouldCollapse && (
-          <>
-            <BreadcrumbSeparator className="[&>svg]:size-3" />
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  const idx = (isS3Prefix || isUnix) ? 0 : 1;
-                  onNavigate(buildPath(idx));
-                }}
-              >
-                {displaySegments[0]}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator className="[&>svg]:size-3" />
-            <BreadcrumbItem>
-              <BreadcrumbEllipsis className="size-5" />
-            </BreadcrumbItem>
-          </>
-        )}
+      {(shouldCollapse ? visibleSegments.slice(1) : visibleSegments).map(
+        (segment, i) => {
+          const realIndex = shouldCollapse
+            ? displaySegments.length - 2 + i
+            : i;
+          const fullIndex = isS3Prefix || isUnix ? realIndex : realIndex + 1;
+          const isLast = realIndex === displaySegments.length - 1;
 
-        {(shouldCollapse ? visibleSegments.slice(1) : visibleSegments).map(
-          (segment, i) => {
-            const realIndex = shouldCollapse
-              ? displaySegments.length - 2 + i
-              : i;
-            const fullIndex = (isS3Prefix || isUnix) ? realIndex : realIndex + 1;
-            const isLast = realIndex === displaySegments.length - 1;
-
-            return (
-              <span key={fullIndex} className="contents">
-                <BreadcrumbSeparator className="[&>svg]:size-3" />
-                <BreadcrumbItem>
-                  {isLast ? (
-                    <BreadcrumbPage className="text-[12px] max-w-[150px] truncate">
-                      {segment}
-                    </BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbLink
-                      className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground max-w-[120px] truncate"
-                      onClick={() => onNavigate(buildPath(fullIndex))}
-                    >
-                      {segment}
-                    </BreadcrumbLink>
-                  )}
-                </BreadcrumbItem>
-              </span>
-            );
-          }
-        )}
-      </BreadcrumbList>
-    </Breadcrumb>
+          return (
+            <div key={fullIndex} className="flex shrink-0 items-center gap-0.5">
+              <ChevronRight
+                size={12}
+                className="shrink-0 text-muted-foreground/30"
+              />
+              {isLast ? (
+                <span className="max-w-[160px] truncate rounded bg-white/[0.04] px-1.5 py-0.5 text-[12px] font-medium text-foreground">
+                  {segment}
+                </span>
+              ) : (
+                <button
+                  onClick={() => onNavigate(buildPath(fullIndex))}
+                  className="max-w-[120px] shrink-0 truncate rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground"
+                >
+                  {segment}
+                </button>
+              )}
+            </div>
+          );
+        },
+      )}
+    </div>
   );
 }

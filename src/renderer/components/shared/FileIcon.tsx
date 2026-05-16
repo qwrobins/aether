@@ -30,7 +30,7 @@ interface FileIconProps {
 
 export function FileIcon({ entry, size = 16 }: FileIconProps) {
   if (entry.isDirectory) {
-    return <Folder size={size} className="text-primary/80 shrink-0" />;
+    return <Folder size={size} className="shrink-0 text-primary/85" />;
   }
 
   const ext = entry.name.split('.').pop()?.toLowerCase() ?? '';
@@ -41,5 +41,5 @@ export function FileIcon({ entry, size = 16 }: FileIconProps) {
     return <Icon size={size} className={`${mapping.className} shrink-0`} />;
   }
 
-  return <File size={size} className="text-muted-foreground/50 shrink-0" />;
+  return <File size={size} className="shrink-0 text-muted-foreground/50" />;
 }
