@@ -7,6 +7,12 @@ import type {
   TransferResult,
   SftpDeleteResult,
 } from './transfer';
+import type {
+  TaildropAvailability,
+  TaildropReceiveRequest,
+  TaildropReceiveResult,
+  TaildropTarget,
+} from './taildrop';
 
 export interface IpcInvokeMap {
   'fs:read-dir': { args: [path: string]; return: DirectoryListing };
@@ -32,6 +38,11 @@ export interface IpcInvokeMap {
   'sftp:mkdir': { args: [connectionId: string, path: string]; return: void };
   'sftp:delete': { args: [connectionId: string, paths: string[]]; return: SftpDeleteResult };
   'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
+
+  // Taildrop / Tailscale
+  'taildrop:status': { args: []; return: TaildropAvailability };
+  'taildrop:list-targets': { args: []; return: TaildropTarget[] };
+  'taildrop:receive': { args: [request: TaildropReceiveRequest]; return: TaildropReceiveResult };
 
   // Dialogs
   'dialog:open-file': { args: [options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }]; return: string | null };

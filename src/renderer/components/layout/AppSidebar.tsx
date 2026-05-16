@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed } from 'lucide-react';
+import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed, Network } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sidebar,
@@ -84,7 +84,7 @@ interface DriveInfo {
 export function AppSidebar() {
   const { navigateTo } = useLocalPanelStore();
   const { profiles, loadProfiles } = useConnectionStore();
-  const { activeConnectionId, connect, disconnect } = useRemotePanelStore();
+  const { activeConnectionId, mode, connect, disconnect, activateTaildrop } = useRemotePanelStore();
   const [connectionManagerOpen, setConnectionManagerOpen] = useState(false);
   const [drives, setDrives] = useState<DriveInfo[]>([]);
 
@@ -141,6 +141,14 @@ export function AppSidebar() {
     if (profile) {
       await connect(profile);
     }
+  }
+
+  async function handleTaildropClick() {
+    if (mode === 'taildrop') return;
+    if (activeConnectionId) {
+      await disconnect();
+    }
+    activateTaildrop();
   }
 
   async function handleDisconnect(e: React.MouseEvent) {
@@ -211,6 +219,33 @@ export function AppSidebar() {
               </SidebarGroupContent>
             </SidebarGroup>
           )}
+
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-[11px] font-medium uppercase tracking-[0.05em]">
+              Destinations
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Tailscale Taildrop"
+                    onClick={handleTaildropClick}
+                    className={cn(
+                      mode === 'taildrop' &&
+                        'bg-[radial-gradient(ellipse_at_left,oklch(0.78_0.16_75/0.07),transparent_70%)]'
+                    )}
+                  >
+                    <span className={cn(
+                      'inline-block size-[6px] shrink-0 rounded-full',
+                      mode === 'taildrop' ? 'bg-accent' : 'bg-muted-foreground/40',
+                    )} />
+                    <Network size={14} className="text-accent/70" />
+                    <span className="truncate text-[13px]">Tailscale</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
 
           <SidebarGroup>
             <div className="flex items-center justify-between pr-2">

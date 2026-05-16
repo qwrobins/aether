@@ -18,6 +18,7 @@ export function TransferItem({ transfer: t }: Props) {
   const percentage =
     t.size > 0 ? Math.round((t.bytesTransferred / t.size) * 100) : 0;
   const isUpload = t.direction === 'upload';
+  const isTaildrop = t.connectionType === 'taildrop';
   const isTerminal = ['completed', 'failed', 'cancelled'].includes(t.status);
 
   const handleCancel = () => {
@@ -40,7 +41,7 @@ export function TransferItem({ transfer: t }: Props) {
             <X className="h-3.5 w-3.5 text-muted-foreground" />
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              {isUpload ? '\u2191' : '\u2193'}
+              {isTaildrop ? '\u21c4' : isUpload ? '\u2191' : '\u2193'}
             </span>
           )}
         </div>
@@ -52,6 +53,11 @@ export function TransferItem({ transfer: t }: Props) {
         >
           {t.fileName}
         </span>
+        {isTaildrop && (
+          <span className="hidden shrink-0 truncate text-[11px] text-muted-foreground sm:block">
+            to {t.targetName ?? t.destinationPath}
+          </span>
+        )}
       </div>
 
       {/* Progress bar — visible in all states */}
@@ -72,14 +78,18 @@ export function TransferItem({ transfer: t }: Props) {
                 : t.status === 'completed'
                   ? 'bg-success'
                   : isUpload
-                    ? 'bg-primary'
+                    ? isTaildrop
+                      ? 'bg-accent'
+                      : 'bg-primary'
                     : 'bg-accent',
               t.status === 'queued' &&
                 'animate-[indeterminate_1.5s_ease-in-out_infinite]',
               t.status === 'active' &&
                 'animate-[shimmer_2s_linear_infinite] bg-[length:200%_100%] bg-gradient-to-r',
-              t.status === 'active' && isUpload &&
+              t.status === 'active' && isUpload && !isTaildrop &&
                 'from-primary via-primary/60 to-primary',
+              t.status === 'active' && isTaildrop &&
+                'from-accent via-accent/60 to-accent',
               t.status === 'active' && !isUpload &&
                 'from-accent via-accent/60 to-accent'
             )}
