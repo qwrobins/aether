@@ -57,7 +57,10 @@ export function PanelHeader({
         {onViewModeChange && (
           <div className="flex items-center rounded-md border border-border/40 p-0.5">
             <button
+              type="button"
               onClick={() => onViewModeChange('list')}
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
               className={cn(
                 'flex h-6 w-6 items-center justify-center rounded transition-colors',
                 viewMode === 'list'
@@ -69,7 +72,10 @@ export function PanelHeader({
               <List size={13} />
             </button>
             <button
+              type="button"
               onClick={() => onViewModeChange('grid')}
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
               className={cn(
                 'flex h-6 w-6 items-center justify-center rounded transition-colors',
                 viewMode === 'grid'

@@ -316,6 +316,7 @@ export function AppSidebar() {
             size="sm"
             className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:justify-center"
             onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
           >
             <Cog size={14} />
             <span className="group-data-[collapsible=icon]:hidden">Settings</span>

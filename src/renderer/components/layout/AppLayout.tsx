@@ -83,11 +83,11 @@ export function AppLayout() {
               {/* File panels */}
               <div className="min-h-0 flex-1 overflow-hidden">
                 <ResizablePanelGroup orientation="horizontal">
-                  <ResizablePanel defaultSize={50} minSize={25} className="!overflow-hidden">
+                  <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden!">
                     <LocalPanel />
                   </ResizablePanel>
                   <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize={50} minSize={25} className="!overflow-hidden">
+                  <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden!">
                     <RemotePanel />
                   </ResizablePanel>
                 </ResizablePanelGroup>

@@ -103,6 +103,7 @@ function ThemeCard({
   return (
     <button
       onClick={onSelect}
+      aria-pressed={isActive}
       className={cn(
         'group relative flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all duration-150',
         isActive

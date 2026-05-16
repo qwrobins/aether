@@ -210,7 +210,7 @@ export function TransferItem({ transfer: t }: Props) {
         {(t.status === 'active' || t.status === 'queued') && (
           <button
             onClick={handleCancel}
-            className="hidden h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground group-hover:flex"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-[color,opacity] hover:text-foreground group-hover:opacity-100 focus:opacity-100"
             aria-label="Cancel transfer"
           >
             <X className="h-3.5 w-3.5" />

@@ -80,6 +80,19 @@ export function FileGridItem({
     e.dataTransfer.effectAllowed = 'copy';
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' && entry.isDirectory) {
+      e.preventDefault();
+      onNavigate(entry.path);
+      return;
+    }
+
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey);
+    }
+  };
+
   const { base, ext } = getFileNameParts(entry.name, entry.isDirectory);
 
   return (
@@ -94,9 +107,12 @@ export function FileGridItem({
       onTransfer={onTransfer}
     >
       <div
+        role="gridcell"
+        tabIndex={0}
+        aria-selected={isSelected}
         className={cn(
           'group relative flex cursor-pointer flex-col items-center rounded-lg border border-transparent p-3 transition-all duration-150',
-          'hover:border-border/30 hover:bg-white/[0.03]',
+          'hover:border-border/30 hover:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none',
           isSelected && 'border-primary/20 bg-primary/[0.06]',
         )}
         style={{
@@ -111,6 +127,7 @@ export function FileGridItem({
         onDoubleClick={() => {
           if (entry.isDirectory) onNavigate(entry.path);
         }}
+        onKeyDown={handleKeyDown}
       >
         <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.02]">
           <FileIcon entry={entry} size={28} />

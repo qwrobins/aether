@@ -5,6 +5,7 @@ import { useUiStore } from '@/stores/uiStore';
 
 describe('useUiStore', () => {
   beforeEach(() => {
+    localStorage.removeItem('aether-theme');
     useUiStore.setState({
       sidebarExpanded: true,
       transferQueueExpanded: false,
