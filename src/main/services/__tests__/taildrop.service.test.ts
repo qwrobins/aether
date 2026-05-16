@@ -19,6 +19,13 @@ vi.mock('node:util', () => ({
   promisify: vi.fn(() => execFileMock),
 }));
 
+function statusJson(peers: Record<string, unknown>): string {
+  return JSON.stringify({
+    MagicDNSSuffix: 'tail23338f.ts.net',
+    Peer: peers,
+  });
+}
+
 describe('TaildropService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -27,10 +34,24 @@ describe('TaildropService', () => {
 
   it('lists Taildrop targets and marks offline devices', async () => {
     execFileMock.mockResolvedValue({
-      stdout: [
-        '100.115.119.77\tec2-dev',
-        '100.102.209.76\tquentins-macbook-pro\toffline; last seen 11m0s ago',
-      ].join('\n'),
+      stdout: statusJson({
+        peer1: {
+          DNSName: 'ec2-dev.tail23338f.ts.net.',
+          HostName: 'ec2-dev',
+          TailscaleIPs: ['100.115.119.77'],
+          Online: true,
+          TaildropTarget: 1,
+          NoFileSharingReason: '',
+        },
+        peer2: {
+          DNSName: 'quentins-macbook-pro.tail23338f.ts.net.',
+          HostName: 'quentins-macbook-pro',
+          TailscaleIPs: ['100.102.209.76'],
+          Online: false,
+          TaildropTarget: 5,
+          NoFileSharingReason: '',
+        },
+      }),
       stderr: '',
     });
 
@@ -49,15 +70,168 @@ describe('TaildropService', () => {
         name: 'quentins-macbook-pro',
         address: '100.102.209.76',
         status: 'offline',
-        detail: 'offline; last seen 11m0s ago',
+        detail: 'offline',
       },
     ]);
+  });
+
+  it('includes tagged subnet routers without merging peers that share a host name', async () => {
+    execFileMock.mockResolvedValue({
+      stdout: statusJson({
+        staleRouter: {
+          DNSName: 'router-lp-ec2-prod-use1.tail23338f.ts.net.',
+          HostName: 'router-lp-ec2-prod-use1',
+          TailscaleIPs: ['100.64.3.1'],
+          Online: false,
+          TaildropTarget: 5,
+          NoFileSharingReason: '',
+        },
+        activeRouter: {
+          DNSName: 'router-lp-ec2-prod-use1-1.tail23338f.ts.net.',
+          HostName: 'router-lp-ec2-prod-use1',
+          TailscaleIPs: ['100.89.6.116'],
+          Online: true,
+          TaildropTarget: 9,
+          NoFileSharingReason: '',
+          PrimaryRoutes: ['10.3.0.0/16', '10.20.0.0/16'],
+        },
+        opsRouter: {
+          DNSName: 'router-lp-ec2-ops-use1.tail23338f.ts.net.',
+          HostName: 'router-lp-ec2-ops-use1',
+          TailscaleIPs: ['100.98.163.36'],
+          Online: true,
+          TaildropTarget: 9,
+          NoFileSharingReason: '',
+          PrimaryRoutes: ['10.254.0.0/16'],
+        },
+        stagingRouter: {
+          DNSName: 'router-lp-ec2-staging-use1.tail23338f.ts.net.',
+          HostName: 'router-lp-ec2-staging-use1',
+          TailscaleIPs: ['100.108.28.7'],
+          Online: true,
+          TaildropTarget: 9,
+          NoFileSharingReason: '',
+          PrimaryRoutes: ['10.21.0.0/16'],
+        },
+      }),
+      stderr: '',
+    });
+
+    const { TaildropService } = await import('../taildrop.service');
+    const service = new TaildropService();
+
+    await expect(service.listTargets()).resolves.toEqual([
+      {
+        id: 'router-lp-ec2-prod-use1',
+        name: 'router-lp-ec2-prod-use1',
+        address: '100.64.3.1',
+        status: 'offline',
+        detail: 'offline',
+      },
+      {
+        id: 'router-lp-ec2-prod-use1-1',
+        name: 'router-lp-ec2-prod-use1-1',
+        address: '100.89.6.116',
+        status: 'available',
+        detail: 'routes: 10.3.0.0/16, 10.20.0.0/16',
+      },
+      {
+        id: 'router-lp-ec2-ops-use1',
+        name: 'router-lp-ec2-ops-use1',
+        address: '100.98.163.36',
+        status: 'available',
+        detail: 'routes: 10.254.0.0/16',
+      },
+      {
+        id: 'router-lp-ec2-staging-use1',
+        name: 'router-lp-ec2-staging-use1',
+        address: '100.108.28.7',
+        status: 'available',
+        detail: 'routes: 10.21.0.0/16',
+      },
+    ]);
+  });
+
+  it('includes both online peers when they share a host name but have unique DNS names', async () => {
+    execFileMock.mockResolvedValue({
+      stdout: statusJson({
+        peer1: {
+          DNSName: 'router-a.tail23338f.ts.net.',
+          HostName: 'router',
+          TailscaleIPs: ['100.64.3.1'],
+          Online: true,
+          TaildropTarget: 9,
+          NoFileSharingReason: '',
+        },
+        peer2: {
+          DNSName: 'router-b.tail23338f.ts.net.',
+          HostName: 'router',
+          TailscaleIPs: ['100.64.3.2'],
+          Online: true,
+          TaildropTarget: 9,
+          NoFileSharingReason: '',
+        },
+      }),
+      stderr: '',
+    });
+
+    const { TaildropService } = await import('../taildrop.service');
+    const service = new TaildropService();
+
+    await expect(service.listTargets()).resolves.toEqual([
+      {
+        id: 'router-a',
+        name: 'router-a',
+        address: '100.64.3.1',
+        status: 'available',
+      },
+      {
+        id: 'router-b',
+        name: 'router-b',
+        address: '100.64.3.2',
+        status: 'available',
+      },
+    ]);
+  });
+
+  it('reports both status and fallback errors when target listing fails', async () => {
+    execFileMock
+      .mockRejectedValueOnce(Object.assign(new Error('status failed'), {
+        stderr: 'invalid json',
+      }))
+      .mockRejectedValueOnce(Object.assign(new Error('targets failed'), {
+        stderr: 'file sharing unavailable',
+      }));
+
+    const { TaildropService } = await import('../taildrop.service');
+    const service = new TaildropService();
+
+    await expect(service.listTargets()).rejects.toThrow(
+      'Could not list Taildrop devices: status --json failed: invalid json; file cp --targets failed: file sharing unavailable',
+    );
   });
 
   it('sends files only to currently available targets', async () => {
     execFileMock
       .mockResolvedValueOnce({
-        stdout: '100.115.119.77\tec2-dev\n100.1.1.1\tphone\toffline; last seen 1h ago\n',
+        stdout: statusJson({
+          peer1: {
+            DNSName: 'ec2-dev.tail23338f.ts.net.',
+            HostName: 'ec2-dev',
+            TailscaleIPs: ['100.115.119.77'],
+            Online: true,
+            TaildropTarget: 1,
+            NoFileSharingReason: '',
+          },
+          peer2: {
+            DNSName: 'phone.tail23338f.ts.net.',
+            HostName: 'phone',
+            TailscaleIPs: ['100.1.1.1'],
+            Online: false,
+            TaildropTarget: 5,
+            NoFileSharingReason: '',
+          },
+        }),
         stderr: '',
       })
       .mockResolvedValueOnce({ stdout: '', stderr: '' });
@@ -141,7 +315,19 @@ describe('TaildropService', () => {
         stderr: 'spawn tailscale ENOENT',
       }))
       .mockResolvedValueOnce({ stdout: '1.98.2', stderr: '' })
-      .mockResolvedValueOnce({ stdout: '100.115.119.77\tec2-dev\n', stderr: '' });
+      .mockResolvedValueOnce({
+        stdout: statusJson({
+          peer1: {
+            DNSName: 'ec2-dev.tail23338f.ts.net.',
+            HostName: 'ec2-dev',
+            TailscaleIPs: ['100.115.119.77'],
+            Online: true,
+            TaildropTarget: 1,
+            NoFileSharingReason: '',
+          },
+        }),
+        stderr: '',
+      });
 
     try {
       const { TaildropService } = await import('../taildrop.service');
@@ -158,7 +344,7 @@ describe('TaildropService', () => {
       ]);
       expect(execFileMock).toHaveBeenLastCalledWith(
         '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
-        ['file', 'cp', '--targets'],
+        ['status', '--json'],
         expect.objectContaining({ windowsHide: true }),
       );
     } finally {

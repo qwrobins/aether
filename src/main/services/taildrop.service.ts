@@ -20,6 +20,21 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const SEND_TIMEOUT_MS = 1000 * 60 * 60;
 const TARGET_NAME_PATTERN = /^[A-Za-z0-9._-]+$/;
 
+interface TailscaleStatusPeer {
+  DNSName?: string;
+  HostName?: string;
+  TailscaleIPs?: string[];
+  Online?: boolean;
+  TaildropTarget?: number;
+  NoFileSharingReason?: string;
+  PrimaryRoutes?: string[];
+}
+
+interface TailscaleStatus {
+  MagicDNSSuffix?: string;
+  Peer?: Record<string, TailscaleStatusPeer>;
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return 'Tailscale command failed';
@@ -69,6 +84,73 @@ function parseTargetLine(line: string): TaildropTarget | null {
   };
 }
 
+function getStatusTargetName(peer: TailscaleStatusPeer, magicDnsSuffix?: string): string | null {
+  const dnsName = peer.DNSName?.trim().replace(/\.$/, '');
+  if (dnsName) {
+    const suffix = magicDnsSuffix ? `.${magicDnsSuffix}` : '';
+    return suffix && dnsName.endsWith(suffix) ? dnsName.slice(0, -suffix.length) : dnsName;
+  }
+
+  return peer.HostName?.trim() || null;
+}
+
+function getStatusTargetDetail(peer: TailscaleStatusPeer): string | undefined {
+  if (peer.Online === false) return 'offline';
+  return peer.PrimaryRoutes?.length ? `routes: ${peer.PrimaryRoutes.join(', ')}` : undefined;
+}
+
+function parseStatusTarget(peer: TailscaleStatusPeer, magicDnsSuffix?: string): TaildropTarget | null {
+  if (!peer.TaildropTarget || peer.NoFileSharingReason) return null;
+
+  const name = getStatusTargetName(peer, magicDnsSuffix);
+  const address = peer.TailscaleIPs?.[0];
+  if (!name || !address) return null;
+
+  return {
+    id: name,
+    name,
+    address,
+    status: peer.Online === false ? 'offline' : 'available',
+    detail: getStatusTargetDetail(peer),
+  };
+}
+
+function shouldReplaceStatusTarget(
+  current: { peer: TailscaleStatusPeer; target: TaildropTarget },
+  next: { peer: TailscaleStatusPeer; target: TaildropTarget },
+): boolean {
+  if (current.target.status === 'offline' && next.target.status === 'available') return true;
+  if (current.target.status === next.target.status) {
+    const currentRouteCount = current.peer.PrimaryRoutes?.length ?? 0;
+    const nextRouteCount = next.peer.PrimaryRoutes?.length ?? 0;
+    return nextRouteCount > currentRouteCount;
+  }
+  return false;
+}
+
+function getStatusTargetKey(peerId: string, peer: TailscaleStatusPeer, target: TaildropTarget): string {
+  return (peer.DNSName?.trim() || peerId || target.name).toLowerCase();
+}
+
+function parseStatusTargets(stdout: string): TaildropTarget[] {
+  const status = JSON.parse(stdout) as TailscaleStatus;
+  const targets = new Map<string, { peer: TailscaleStatusPeer; target: TaildropTarget }>();
+
+  for (const [peerId, peer] of Object.entries(status.Peer ?? {})) {
+    const target = parseStatusTarget(peer, status.MagicDNSSuffix);
+    if (!target) continue;
+
+    const key = getStatusTargetKey(peerId, peer, target);
+    const current = targets.get(key);
+    const next = { peer, target };
+    if (!current || shouldReplaceStatusTarget(current, next)) {
+      targets.set(key, next);
+    }
+  }
+
+  return [...targets.values()].map(({ target }) => target);
+}
+
 function parseReceiveFiles(output: string): string[] {
   return output
     .split(/\r?\n/)
@@ -112,15 +194,25 @@ export class TaildropService {
 
   async listTargets(): Promise<TaildropTarget[]> {
     try {
-      const { stdout } = await this.run(['file', 'cp', '--targets'], {
+      const { stdout } = await this.run(['status', '--json'], {
         timeout: COMMAND_TIMEOUT_MS,
       });
-      return stdout
-        .split(/\r?\n/)
-        .map(parseTargetLine)
-        .filter((target): target is TaildropTarget => Boolean(target));
-    } catch (error) {
-      throw new Error(`Could not list Taildrop devices: ${getCommandOutput(error)}`);
+      return parseStatusTargets(stdout);
+    } catch (primaryError) {
+      try {
+        const { stdout } = await this.run(['file', 'cp', '--targets'], {
+          timeout: COMMAND_TIMEOUT_MS,
+        });
+        return stdout
+          .split(/\r?\n/)
+          .map(parseTargetLine)
+          .filter((target): target is TaildropTarget => Boolean(target));
+      } catch (fallbackError) {
+        throw new Error(
+          `Could not list Taildrop devices: status --json failed: ${getCommandOutput(primaryError)}; ` +
+            `file cp --targets failed: ${getCommandOutput(fallbackError)}`,
+        );
+      }
     }
   }
 
