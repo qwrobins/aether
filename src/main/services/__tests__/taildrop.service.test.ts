@@ -160,6 +160,7 @@ describe('TaildropService', () => {
 
   it('reports a missing Tailscale CLI as unavailable status', async () => {
     execFileMock.mockRejectedValue(Object.assign(new Error('spawn tailscale ENOENT'), {
+      code: 'ENOENT',
       stderr: 'spawn tailscale ENOENT',
     }));
 
