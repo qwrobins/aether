@@ -31,6 +31,7 @@ interface TailscaleStatusPeer {
 }
 
 interface TailscaleStatus {
+  BackendState?: string;
   MagicDNSSuffix?: string;
   Peer?: Record<string, TailscaleStatusPeer>;
 }
@@ -151,6 +152,17 @@ function parseStatusTargets(stdout: string): TaildropTarget[] {
   return [...targets.values()].map(({ target }) => target);
 }
 
+function getBackendUnavailableMessage(backendState?: string): string | null {
+  if (!backendState || backendState === 'Running') return null;
+  if (backendState === 'Stopped') return 'Tailscale is disconnected.';
+  if (backendState === 'NeedsLogin') return 'Tailscale needs you to sign in.';
+  if (backendState === 'NeedsMachineAuth') return 'Tailscale device authorization is required.';
+  if (backendState === 'Starting') return 'Tailscale is connecting.';
+  if (backendState === 'InUseOtherUser') return 'Tailscale is running as another user.';
+  if (backendState === 'NoState') return 'Tailscale is not ready.';
+  return `Tailscale is not ready (${backendState}).`;
+}
+
 function parseReceiveFiles(output: string): string[] {
   return output
     .split(/\r?\n/)
@@ -177,7 +189,16 @@ export class TaildropService {
 
   async getAvailability(): Promise<TaildropAvailability> {
     try {
-      await this.run(['version'], { timeout: COMMAND_TIMEOUT_MS });
+      const { stdout } = await this.run(['status', '--json'], { timeout: COMMAND_TIMEOUT_MS });
+      const status = JSON.parse(stdout) as TailscaleStatus;
+      const message = getBackendUnavailableMessage(status.BackendState);
+      if (message) {
+        return {
+          status: 'unavailable',
+          platform: process.platform,
+          message,
+        };
+      }
       return { status: 'available', platform: process.platform };
     } catch (error) {
       const message = getCommandOutput(error);

@@ -21,8 +21,17 @@ vi.mock('node:util', () => ({
 
 function statusJson(peers: Record<string, unknown>): string {
   return JSON.stringify({
+    BackendState: 'Running',
     MagicDNSSuffix: 'tail23338f.ts.net',
     Peer: peers,
+  });
+}
+
+function backendStatusJson(backendState: string): string {
+  return JSON.stringify({
+    BackendState: backendState,
+    MagicDNSSuffix: 'tail23338f.ts.net',
+    Peer: {},
   });
 }
 
@@ -256,7 +265,7 @@ describe('TaildropService', () => {
         code: 'ENOENT',
         stderr: 'spawn tailscale ENOENT',
       }))
-      .mockResolvedValueOnce({ stdout: '1.98.2', stderr: '' });
+      .mockResolvedValueOnce({ stdout: backendStatusJson('Running'), stderr: '' });
 
     try {
       const { TaildropService } = await import('../taildrop.service');
@@ -269,7 +278,7 @@ describe('TaildropService', () => {
       expect(execFileMock).toHaveBeenNthCalledWith(
         2,
         '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
-        ['version'],
+        ['status', '--json'],
         expect.objectContaining({
           env: expect.objectContaining({ SHLVL: expect.any(String) }),
           windowsHide: true,
@@ -283,7 +292,7 @@ describe('TaildropService', () => {
   it('provides SHLVL when launching the Tailscale command from GUI environments', async () => {
     const originalShellLevel = process.env.SHLVL;
     delete process.env.SHLVL;
-    execFileMock.mockResolvedValue({ stdout: '1.98.2', stderr: '' });
+    execFileMock.mockResolvedValue({ stdout: backendStatusJson('Running'), stderr: '' });
 
     try {
       const { TaildropService } = await import('../taildrop.service');
@@ -293,7 +302,7 @@ describe('TaildropService', () => {
 
       expect(execFileMock).toHaveBeenCalledWith(
         'tailscale',
-        ['version'],
+        ['status', '--json'],
         expect.objectContaining({
           env: expect.objectContaining({ SHLVL: '1' }),
         }),
@@ -314,7 +323,7 @@ describe('TaildropService', () => {
         code: 'ENOENT',
         stderr: 'spawn tailscale ENOENT',
       }))
-      .mockResolvedValueOnce({ stdout: '1.98.2', stderr: '' })
+      .mockResolvedValueOnce({ stdout: backendStatusJson('Running'), stderr: '' })
       .mockResolvedValueOnce({
         stdout: statusJson({
           peer1: {
@@ -387,6 +396,32 @@ describe('TaildropService', () => {
       status: 'missing',
       platform: process.platform,
       message: 'Tailscale is not installed or Aether could not find the Tailscale command.',
+    });
+  });
+
+  it('reports disconnected Tailscale backends as unavailable', async () => {
+    execFileMock.mockResolvedValue({ stdout: backendStatusJson('Stopped'), stderr: '' });
+
+    const { TaildropService } = await import('../taildrop.service');
+    const service = new TaildropService();
+
+    await expect(service.getAvailability()).resolves.toEqual({
+      status: 'unavailable',
+      platform: process.platform,
+      message: 'Tailscale is disconnected.',
+    });
+  });
+
+  it('reports Tailscale authorization backend states as unavailable', async () => {
+    execFileMock.mockResolvedValue({ stdout: backendStatusJson('NeedsMachineAuth'), stderr: '' });
+
+    const { TaildropService } = await import('../taildrop.service');
+    const service = new TaildropService();
+
+    await expect(service.getAvailability()).resolves.toEqual({
+      status: 'unavailable',
+      platform: process.platform,
+      message: 'Tailscale device authorization is required.',
     });
   });
 });
