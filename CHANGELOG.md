@@ -4,9 +4,11 @@
 
 ### Bug Fixes
 
-* Fix macOS Taildrop detection when Tailscale is installed as the desktop app
-  * fall back to the bundled Tailscale.app binary and common Homebrew CLI paths when GUI launches cannot resolve `tailscale` from `PATH`
-  * document signed and notarized macOS release DMGs as the normal installation path
+* Fix macOS Taildrop detection ([#35](https://github.com/qwrobins/aether/pull/35))
+  * resolve Tailscale through the bundled macOS desktop app binary and common Homebrew CLI paths when `tailscale` is not on PATH
+  * cache the resolved command for subsequent Taildrop operations
+  * bump Aether to 0.1.15 and update the changelog
+  * refresh README macOS install/release docs for signed and notarized DMGs
 
 ## [0.1.14](https://github.com/qwrobins/aether/compare/v0.1.13...v0.1.14) (2026-05-16)
 
