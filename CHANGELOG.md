@@ -4,10 +4,10 @@
 
 ### Bug Fixes
 
-* Fix Taildrop router discovery
-  * list Taildrop-capable peers from `tailscale status --json` so tagged subnet routers are included
-  * prefer online router peers over stale offline duplicates with the same host name
-  * bump Aether to 0.1.18
+* Fix Taildrop router discovery ([#38](https://github.com/qwrobins/aether/pull/38))
+  * switch Taildrop target discovery to `tailscale status --json` so tagged subnet routers are included
+  * prefer online router peers over stale offline duplicates that share the same host name
+  * bump Aether to 0.1.18 and update release metadata
 
 ## [0.1.17](https://github.com/qwrobins/aether/compare/v0.1.16...v0.1.17) (2026-05-16)
 
