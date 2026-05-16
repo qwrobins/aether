@@ -4,11 +4,10 @@
 
 ### Features
 
-* Add Tailscale Taildrop support
-  * Add a built-in Tailscale destination that lists Taildrop-capable tailnet devices instead of remote files.
-  * Queue local file sends to Taildrop devices with file-level transfer status and Taildrop history.
-  * Add Linux receive collection through `tailscale file get` into the current local folder.
-  * Surface missing, unavailable, offline, and platform-specific Taildrop states through typed IPC.
+* feat: add Tailscale Taildrop support ([#34](https://github.com/qwrobins/aether/pull/34)) - QWR-144, QWR-145, QWR-146, QWR-147, QWR-148, QWR-149, QWR-150, QWR-151, QWR-152, QWR-153
+  * add a built-in Tailscale destination mode that lists Taildrop targets instead of remote files
+  * add typed Taildrop IPC, a main-process Tailscale CLI service, Taildrop send queue integration, and Linux receive collection via `tailscale file get`
+  * add Taildrop transfer/history UI, README documentation, tests, and bump Aether to 0.1.14
 
 ## [0.1.13](https://github.com/qwrobins/aether/compare/v0.1.12...v0.1.13) (2026-05-14)
 
