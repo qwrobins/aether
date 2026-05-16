@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.15](https://github.com/qwrobins/aether/compare/v0.1.14...v0.1.15) (2026-05-16)
+
+### Bug Fixes
+
+* Fix macOS Taildrop detection when Tailscale is installed as the desktop app
+  * fall back to the bundled Tailscale.app binary and common Homebrew CLI paths when GUI launches cannot resolve `tailscale` from `PATH`
+  * document signed and notarized macOS release DMGs as the normal installation path
+
 ## [0.1.14](https://github.com/qwrobins/aether/compare/v0.1.13...v0.1.14) (2026-05-16)
 
 ### Features
