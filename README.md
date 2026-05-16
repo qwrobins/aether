@@ -126,6 +126,8 @@ Creates distributable installers. Configured makers:
 
 Download the latest macOS DMG from the [GitHub Releases](https://github.com/qwrobins/aether/releases) page, open it, and drag Aether into `/Applications`.
 
+Release DMGs are named with an explicit platform and architecture, such as `Aether-0.1.16-macos-arm64.dmg` or `Aether-0.1.16-macos-x64.dmg`.
+
 Published macOS release builds are signed with a Developer ID Application certificate and notarized by Apple, so they should open normally under Gatekeeper without clearing quarantine attributes.
 
 ### Release Automation

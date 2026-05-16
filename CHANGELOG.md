@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.16](https://github.com/qwrobins/aether/compare/v0.1.15...v0.1.16) (2026-05-16)
+
+### Bug Fixes
+
+* Fix macOS release asset names
+  * publish DMGs with an explicit `macos` platform segment, such as `Aether-0.1.16-macos-arm64.dmg`
+  * bump Aether to 0.1.16
+
 ## [0.1.15](https://github.com/qwrobins/aether/compare/v0.1.14...v0.1.15) (2026-05-16)
 
 ### Bug Fixes
