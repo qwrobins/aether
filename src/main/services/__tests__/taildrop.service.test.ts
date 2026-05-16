@@ -75,6 +75,67 @@ describe('TaildropService', () => {
     await expect(service.sendFile('/tmp/a.txt', 'bad target')).rejects.toThrow('Invalid Taildrop target');
   });
 
+  it('falls back to the bundled macOS app binary when tailscale is not on PATH', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+    execFileMock
+      .mockRejectedValueOnce(Object.assign(new Error('spawn tailscale ENOENT'), {
+        code: 'ENOENT',
+        stderr: 'spawn tailscale ENOENT',
+      }))
+      .mockResolvedValueOnce({ stdout: '1.98.2', stderr: '' });
+
+    try {
+      const { TaildropService } = await import('../taildrop.service');
+      const service = new TaildropService();
+
+      await expect(service.getAvailability()).resolves.toEqual({
+        status: 'available',
+        platform: 'darwin',
+      });
+      expect(execFileMock).toHaveBeenNthCalledWith(
+        2,
+        '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+        ['version'],
+        expect.objectContaining({ windowsHide: true }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it('reuses a resolved macOS Tailscale command for later calls', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+    execFileMock
+      .mockRejectedValueOnce(Object.assign(new Error('spawn tailscale ENOENT'), {
+        code: 'ENOENT',
+        stderr: 'spawn tailscale ENOENT',
+      }))
+      .mockResolvedValueOnce({ stdout: '1.98.2', stderr: '' })
+      .mockResolvedValueOnce({ stdout: '100.115.119.77\tec2-dev\n', stderr: '' });
+
+    try {
+      const { TaildropService } = await import('../taildrop.service');
+      const service = new TaildropService();
+
+      await service.getAvailability();
+      await expect(service.listTargets()).resolves.toEqual([
+        {
+          id: 'ec2-dev',
+          name: 'ec2-dev',
+          address: '100.115.119.77',
+          status: 'available',
+        },
+      ]);
+      expect(execFileMock).toHaveBeenLastCalledWith(
+        '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+        ['file', 'cp', '--targets'],
+        expect.objectContaining({ windowsHide: true }),
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
   it('collects Linux received files into a destination directory', async () => {
     const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
     statMock.mockResolvedValue({ isDirectory: () => true });
@@ -108,7 +169,7 @@ describe('TaildropService', () => {
     await expect(service.getAvailability()).resolves.toEqual({
       status: 'missing',
       platform: process.platform,
-      message: 'Tailscale is not installed or is not on PATH.',
+      message: 'Tailscale is not installed or Aether could not find the Tailscale command.',
     });
   });
 });

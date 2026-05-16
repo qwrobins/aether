@@ -122,13 +122,19 @@ Creates distributable installers. Configured makers:
 | macOS | DMG |
 | Linux | DEB, RPM, AppImage |
 
+### Install macOS Release Builds
+
+Download the latest macOS DMG from the [GitHub Releases](https://github.com/qwrobins/aether/releases) page, open it, and drag Aether into `/Applications`.
+
+Published macOS release builds are signed with a Developer ID Application certificate and notarized by Apple, so they should open normally under Gatekeeper without clearing quarantine attributes.
+
 ### Release Automation
 
 Merging a releasable conventional commit to `main` runs `.github/workflows/prepare-release.yml`. That workflow calculates the next semantic version, updates `package.json`, `package-lock.json`, `.release-please-manifest.json`, and `CHANGELOG.md`, pushes the matching `vX.Y.Z` tag, then dispatches `.github/workflows/release.yml` for that tag. The release workflow validates that the tag matches `package.json` before building Linux and macOS release assets.
 
 ### Signed macOS Releases
 
-Tagged macOS releases are signed and notarized by GitHub Actions when all signing secrets are configured. Until then, the workflow continues to build an unsigned DMG.
+Tagged macOS releases are signed and notarized by GitHub Actions. The workflow imports a Developer ID Application certificate, signs the app bundle, submits it for Apple notarization, staples the notarization ticket, and publishes the DMG with the other release assets.
 
 | Secret | Description |
 |---|---|
@@ -149,7 +155,7 @@ Local macOS builds remain unsigned unless `AETHER_SIGN_MACOS=true` and the notar
 
 ### macOS — "App is Damaged" Warning
 
-Unsigned local builds may be blocked by macOS with a "damaged" error. Run this once in Terminal after installing an unsigned build:
+Release DMGs should not show this warning because they are signed and notarized. Unsigned local builds or ad hoc test artifacts may still be blocked by macOS with a "damaged" error. Run this once in Terminal after installing an unsigned build:
 
 ```bash
 xattr -cr /Applications/Aether.app

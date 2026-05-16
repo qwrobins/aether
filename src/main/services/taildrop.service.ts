@@ -10,6 +10,11 @@ import type {
 
 const execFileAsync = promisify(execFile);
 const TAILSCALE_COMMAND = 'tailscale';
+const MACOS_TAILSCALE_COMMANDS = [
+  '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  '/opt/homebrew/bin/tailscale',
+  '/usr/local/bin/tailscale',
+];
 const MAX_OUTPUT_BYTES = 1024 * 128;
 const COMMAND_TIMEOUT_MS = 60_000;
 const SEND_TIMEOUT_MS = 1000 * 60 * 60;
@@ -25,6 +30,17 @@ function getCommandOutput(error: unknown): string {
   const stderr = typeof maybeOutput.stderr === 'string' ? maybeOutput.stderr.trim() : '';
   const stdout = typeof maybeOutput.stdout === 'string' ? maybeOutput.stdout.trim() : '';
   return stderr || stdout || getErrorMessage(error);
+}
+
+function isMissingCommandError(error: unknown): boolean {
+  const maybeError = error as { code?: unknown };
+  return maybeError.code === 'ENOENT' || /ENOENT|not found|no such file/i.test(getCommandOutput(error));
+}
+
+function getCommandCandidates(): string[] {
+  return process.platform === 'darwin'
+    ? [TAILSCALE_COMMAND, ...MACOS_TAILSCALE_COMMANDS]
+    : [TAILSCALE_COMMAND];
 }
 
 function parseTargetLine(line: string): TaildropTarget | null {
@@ -68,18 +84,20 @@ async function assertDirectory(directoryPath: string): Promise<void> {
 }
 
 export class TaildropService {
+  private tailscaleCommand?: string;
+
   async getAvailability(): Promise<TaildropAvailability> {
     try {
       await this.run(['version'], { timeout: COMMAND_TIMEOUT_MS });
       return { status: 'available', platform: process.platform };
     } catch (error) {
       const message = getCommandOutput(error);
-      const missing = /ENOENT|not found|no such file/i.test(message);
+      const missing = isMissingCommandError(error);
       return {
         status: missing ? 'missing' : 'unavailable',
         platform: process.platform,
         message: missing
-          ? 'Tailscale is not installed or is not on PATH.'
+          ? 'Tailscale is not installed or Aether could not find the Tailscale command.'
           : message,
       };
     }
@@ -167,11 +185,38 @@ export class TaildropService {
     args: string[],
     options: { signal?: AbortSignal; timeout: number },
   ): Promise<{ stdout: string; stderr: string }> {
-    return execFileAsync(TAILSCALE_COMMAND, args, {
-      signal: options.signal,
-      timeout: options.timeout,
-      maxBuffer: MAX_OUTPUT_BYTES,
-      windowsHide: true,
-    });
+    return this.runWithCandidates(
+      this.tailscaleCommand ? [this.tailscaleCommand] : getCommandCandidates(),
+      args,
+      options,
+    );
+  }
+
+  private async runWithCandidates(
+    commands: string[],
+    args: string[],
+    options: { signal?: AbortSignal; timeout: number },
+  ): Promise<{ stdout: string; stderr: string }> {
+    let missingError: unknown;
+
+    for (const command of commands) {
+      try {
+        const result = await execFileAsync(command, args, {
+          signal: options.signal,
+          timeout: options.timeout,
+          maxBuffer: MAX_OUTPUT_BYTES,
+          windowsHide: true,
+        });
+        this.tailscaleCommand = command;
+        return result;
+      } catch (error) {
+        if (!isMissingCommandError(error)) {
+          throw error;
+        }
+        missingError = error;
+      }
+    }
+
+    throw missingError ?? new Error('Tailscale command not found');
   }
 }
