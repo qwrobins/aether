@@ -155,7 +155,17 @@ jobs:
 
           count=0
           while IFS= read -r -d '' file; do
-            cp "$file" release-assets/
+            filename="$(basename "$file")"
+            if [[ "${{ matrix.platform }}" == "macos" ]]; then
+              if [[ "$filename" == *macos* || "$filename" == *darwin* ]]; then
+                :
+              elif [[ "$filename" =~ ^(.+)-(arm64|x64)\.dmg$ ]]; then
+                filename="${BASH_REMATCH[1]}-macos-${BASH_REMATCH[2]}.dmg"
+              else
+                filename="${filename%.dmg}-macos.dmg"
+              fi
+            fi
+            cp "$file" "release-assets/$filename"
             count=$((count + 1))
           done < <(find out/make -name '${{ matrix.artifact_glob }}' -print0)
 
