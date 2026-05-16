@@ -4,9 +4,10 @@
 
 ### Bug Fixes
 
-* Fix Taildrop device discovery from macOS app launches
-  * provide `SHLVL=1` when spawning the Tailscale app binary so Finder/Dock-launched Aether can read Taildrop targets
-  * bump Aether to 0.1.17
+* Fix macOS Taildrop launch environment ([#37](https://github.com/qwrobins/aether/pull/37))
+  * provide `SHLVL=1` when spawning the local Tailscale command
+  * add a regression test for GUI-style environments where `process.env.SHLVL` is absent
+  * bump Aether to 0.1.17 and update release metadata
 
 ## [0.1.16](https://github.com/qwrobins/aether/compare/v0.1.15...v0.1.16) (2026-05-16)
 
