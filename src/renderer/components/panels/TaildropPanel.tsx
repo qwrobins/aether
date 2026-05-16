@@ -10,6 +10,8 @@ import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTaildropStore } from '@/stores/taildropStore';
 import type { TaildropTarget } from '@shared/types/taildrop';
 
+const TAILDROP_REFRESH_INTERVAL_MS = 10_000;
+
 type LocalFilePayload = {
   panelType: 'local';
   entries: Array<{ path: string; name: string; size?: number; isDirectory?: boolean }>;
@@ -176,6 +178,23 @@ export function TaildropPanel() {
 
   useEffect(() => {
     refresh();
+
+    const refreshSilently = () => {
+      void refresh({ silent: true });
+    };
+    const intervalId = window.setInterval(refreshSilently, TAILDROP_REFRESH_INTERVAL_MS);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshSilently();
+    };
+
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [refresh]);
 
   const handleCollectReceived = useCallback(async () => {

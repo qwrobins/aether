@@ -21,7 +21,7 @@ interface TaildropState {
   isLoading: boolean;
   error: string | null;
 
-  refresh: () => Promise<void>;
+  refresh: (options?: { silent?: boolean }) => Promise<void>;
   sendFiles: (target: TaildropTarget, files: Array<{ path: string; name: string; size?: number; isDirectory?: boolean }>) => Promise<void>;
   collectReceived: (destinationPath: string) => Promise<TaildropReceiveResult>;
   addHistory: (item: TaildropHistoryItem) => void;
@@ -61,8 +61,12 @@ export const useTaildropStore = create<TaildropState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  refresh: async () => {
-    set({ isLoading: true, error: null });
+  refresh: async (options = {}) => {
+    if (!options.silent) {
+      set({ isLoading: true, error: null });
+    } else {
+      set({ error: null });
+    }
     try {
       const availability = await window.api.invoke('taildrop:status');
       if (availability.status !== 'available') {
@@ -79,6 +83,8 @@ export const useTaildropStore = create<TaildropState>((set, get) => ({
       set({ availability, targets, isLoading: false, error: null });
     } catch (error) {
       set({
+        availability: null,
+        targets: [],
         isLoading: false,
         error: getErrorMessage(error, 'Could not load Taildrop devices'),
       });
