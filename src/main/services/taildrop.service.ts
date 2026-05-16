@@ -43,6 +43,13 @@ function getCommandCandidates(): string[] {
     : [TAILSCALE_COMMAND];
 }
 
+function getTailscaleEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    SHLVL: process.env.SHLVL ?? '1',
+  };
+}
+
 function parseTargetLine(line: string): TaildropTarget | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
@@ -206,6 +213,7 @@ export class TaildropService {
           timeout: options.timeout,
           maxBuffer: MAX_OUTPUT_BYTES,
           windowsHide: true,
+          env: getTailscaleEnv(),
         });
         this.tailscaleCommand = command;
         return result;
