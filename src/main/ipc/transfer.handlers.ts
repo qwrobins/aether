@@ -154,7 +154,7 @@ export function registerTransferHandlers(
   transferService.setSftpClientFactory((connectionId: string) =>
     sftpService.createTransferClient(connectionId),
   );
-  transferService.setRsyncClientFactory?.((connectionId: string) =>
+  transferService.setRsyncClientFactory((connectionId: string) =>
     rsyncService.createTransferClient(connectionId),
   );
 

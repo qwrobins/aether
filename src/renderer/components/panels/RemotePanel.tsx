@@ -302,7 +302,11 @@ export function RemotePanel() {
         const newPath = oldPath.replace(/[^/]+$/, newName);
         window.api
           .invoke('sftp:rename', activeConnectionId, oldPath, newPath)
-          .then(() => refresh());
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] SFTP rename failed:', err);
+            toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       } else if (activeProfile.type === 'rsync') {
         const newPath = oldPath.replace(/[^/]+$/, newName);
         window.api
@@ -339,12 +343,20 @@ export function RemotePanel() {
       const key = `${currentPath}${name}/`;
       window.api
         .invoke('s3:create-folder', activeConnectionId, currentBucket, key)
-        .then(() => refresh());
+        .then(() => refresh())
+        .catch((err) => {
+          console.error('[Aether] S3 create folder failed:', err);
+          toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
     } else if (activeProfile.type === 'sftp') {
       const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
       window.api
         .invoke('sftp:mkdir', activeConnectionId, newPath)
-        .then(() => refresh());
+        .then(() => refresh())
+        .catch((err) => {
+          console.error('[Aether] SFTP mkdir failed:', err);
+          toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
     } else if (activeProfile.type === 'rsync') {
       const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
       window.api
@@ -438,7 +450,7 @@ export function RemotePanel() {
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={CloudOff} title="No connection" subtitle="Connect to S3 or SFTP to browse remote files" />
+            <EmptyState icon={CloudOff} title="No connection" subtitle="Connect to a remote profile to browse remote files" />
           </div>
         )}
       </div>

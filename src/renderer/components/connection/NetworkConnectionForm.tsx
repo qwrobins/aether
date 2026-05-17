@@ -24,34 +24,46 @@ const labels: Partial<Record<ConnectionType, string>> = {
 
 export function NetworkConnectionForm({ type, formData, onChange }: NetworkConnectionFormProps) {
   const browseForMount = useCallback(async () => {
-    const homePath = await window.api.invoke('fs:get-home');
-    const directory = await window.api.invoke('dialog:open-directory', homePath);
-    if (directory) {
-      onChange('mountPath', directory);
+    try {
+      const homePath = await window.api.invoke('fs:get-home');
+      const directory = await window.api.invoke('dialog:open-directory', homePath);
+      if (directory) {
+        onChange('mountPath', directory);
+      }
+    } catch (error) {
+      console.error('[Aether] Failed to browse for mount path:', error);
     }
   }, [onChange]);
 
   const browseForServiceAccount = useCallback(async () => {
-    const homePath = await window.api.invoke('fs:get-home');
-    const filePath = await window.api.invoke('dialog:open-file', {
-      title: 'Select Service Account Key',
-      defaultPath: homePath,
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (filePath) {
-      onChange('serviceAccountKeyPath', filePath);
+    try {
+      const homePath = await window.api.invoke('fs:get-home');
+      const filePath = await window.api.invoke('dialog:open-file', {
+        title: 'Select Service Account Key',
+        defaultPath: homePath,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (filePath) {
+        onChange('serviceAccountKeyPath', filePath);
+      }
+    } catch (error) {
+      console.error('[Aether] Failed to browse for service account key:', error);
     }
   }, [onChange]);
 
   const browseForPrivateKey = useCallback(async () => {
-    const homePath = await window.api.invoke('fs:get-home');
-    const filePath = await window.api.invoke('dialog:open-file', {
-      title: 'Select SSH Private Key',
-      defaultPath: `${homePath}/.ssh`,
-      filters: [{ name: 'All Files', extensions: ['*'] }],
-    });
-    if (filePath) {
-      onChange('privateKeyPath', filePath);
+    try {
+      const homePath = await window.api.invoke('fs:get-home');
+      const filePath = await window.api.invoke('dialog:open-file', {
+        title: 'Select SSH Private Key',
+        defaultPath: `${homePath}/.ssh`,
+        filters: [{ name: 'All Files', extensions: ['*'] }],
+      });
+      if (filePath) {
+        onChange('privateKeyPath', filePath);
+      }
+    } catch (error) {
+      console.error('[Aether] Failed to browse for private key:', error);
     }
   }, [onChange]);
 

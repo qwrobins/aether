@@ -21,6 +21,7 @@ const enqueue = vi.fn(async (request: TransferRequest, _s3Client?: unknown, _sft
 const getTransfer = vi.fn((id: string) => transferItems.get(id));
 const setWindow = vi.fn();
 const setSftpClientFactory = vi.fn();
+const setRsyncClientFactory = vi.fn();
 const cancel = vi.fn();
 const clear = vi.fn();
 const getTransfers = vi.fn(() => Array.from(transferItems.values()));
@@ -46,6 +47,7 @@ vi.mock('../../services/transfer.service', () => ({
   TransferService: class TransferService {
     setWindow = setWindow;
     setSftpClientFactory = setSftpClientFactory;
+    setRsyncClientFactory = setRsyncClientFactory;
     enqueue = enqueue;
     getTransfer = getTransfer;
     cancel = cancel;
@@ -81,6 +83,15 @@ vi.mock('../sftp.handlers', () => ({
   },
 }));
 
+vi.mock('../rsync.handlers', () => ({
+  rsyncService: {
+    getClient: vi.fn(() => ({ kind: 'rsync-client', stat: vi.fn() })),
+    createTransferClient: vi.fn(async () => ({ kind: 'transfer-rsync-client' })),
+    listFilesRecursive: vi.fn(),
+    walkFilesRecursive: vi.fn(),
+  },
+}));
+
 function createRequest(overrides: Partial<TransferRequest> = {}): TransferRequest {
   return {
     sourcePath: '/tmp/source',
@@ -113,6 +124,7 @@ describe('registerTransferHandlers', () => {
     getTransfer.mockClear();
     setWindow.mockClear();
     setSftpClientFactory.mockClear();
+    setRsyncClientFactory.mockClear();
     cancel.mockClear();
     clear.mockClear();
     getTransfers.mockClear();
