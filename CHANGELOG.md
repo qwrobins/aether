@@ -4,12 +4,10 @@
 
 ### Bug Fixes
 
-* Fix new connection form spacing
-  * add horizontal inset to the connection form fields and footer actions
-  * keep the form content scrollable within the connection sheet
-  * document the network connection options added in 0.1.21
-  * show the app version at the bottom of the settings panel
-  * bump Aether to 0.1.22
+* Fix connection form spacing ([#43](https://github.com/qwrobins/aether/pull/43))
+  * add horizontal inset to the new/edit connection form fields
+  * add matching footer padding so Save/Test/Cancel no longer press against the sheet edge
+  * bump Aether to 0.1.22 and update release metadata
 
 ## [0.1.21](https://github.com/qwrobins/aether/compare/v0.1.20...v0.1.21) (2026-05-17)
 
