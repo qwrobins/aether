@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed, Network } from 'lucide-react';
+import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed, Network, Cog } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sidebar,
@@ -18,7 +18,9 @@ import { Button } from '@/components/ui/button';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
+import { useUiStore } from '@/stores/uiStore';
 import { ConnectionManager } from '@/components/connection/ConnectionManager';
+import { SettingsSheet } from '@/components/settings/SettingsSheet';
 
 const quickAccessItems = [
   { label: 'Home', icon: House, pathKey: 'home' as const },
@@ -85,6 +87,7 @@ export function AppSidebar() {
   const { navigateTo } = useLocalPanelStore();
   const { profiles, loadProfiles } = useConnectionStore();
   const { activeConnectionId, mode, connect, disconnect, activateTaildrop } = useRemotePanelStore();
+  const { setSettingsOpen } = useUiStore();
   const [connectionManagerOpen, setConnectionManagerOpen] = useState(false);
   const [drives, setDrives] = useState<DriveInfo[]>([]);
 
@@ -306,8 +309,18 @@ export function AppSidebar() {
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter>
+        <SidebarFooter className="gap-2">
           <SidebarTrigger className="w-full" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:justify-center"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+          >
+            <Cog size={14} />
+            <span className="group-data-[collapsible=icon]:hidden">Settings</span>
+          </Button>
         </SidebarFooter>
       </Sidebar>
 
@@ -315,6 +328,7 @@ export function AppSidebar() {
         open={connectionManagerOpen}
         onOpenChange={setConnectionManagerOpen}
       />
+      <SettingsSheet />
     </>
   );
 }

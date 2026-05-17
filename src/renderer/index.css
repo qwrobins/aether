@@ -163,3 +163,244 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Empty state ambient glow */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.12; transform: scale(1); }
+  50% { opacity: 0.22; transform: scale(1.08); }
+}
+
+/* Subtle float for empty state icons */
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+/* ============================================
+   THEME: OBSIDIAN
+   Cool slate grays with teal accent
+   ============================================ */
+html[data-theme="obsidian"] {
+  --color-background: #090c0e;
+  --color-surface: #0e1216;
+  --color-card: #12181d;
+  --color-card-foreground: #dce4e8;
+  --color-popover: #0b1014;
+  --color-popover-foreground: #dce4e8;
+
+  --color-primary: #5eead4;
+  --color-primary-foreground: #021c1a;
+
+  --color-secondary: #131c22;
+  --color-secondary-foreground: #c8d4dc;
+
+  --color-accent: #38bdf8;
+  --color-accent-foreground: #00101a;
+
+  --color-muted: #162028;
+  --color-muted-foreground: #5a6b75;
+
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-destructive: #f87171;
+  --color-destructive-foreground: #fafafa;
+
+  --color-foreground: #dce4e8;
+  --color-border: #1e2a33;
+  --color-input: #18222a;
+  --color-ring: #5eead4;
+
+  --color-sidebar: #070a0e;
+  --color-sidebar-foreground: #c8d4dc;
+  --color-sidebar-border: #1a252e;
+  --color-sidebar-primary: #5eead4;
+  --color-sidebar-primary-foreground: #021c1a;
+  --color-sidebar-accent: #162028;
+  --color-sidebar-accent-foreground: #c8d4dc;
+  --color-sidebar-muted: #162028;
+  --color-sidebar-muted-foreground: #5a6b75;
+  --color-sidebar-ring: #5eead4;
+}
+
+/* ============================================
+   THEME: SOLARIZED
+   Muted navy with amber accent
+   ============================================ */
+html[data-theme="solarized"] {
+  --color-background: #0a1014;
+  --color-surface: #0f1a20;
+  --color-card: #13212a;
+  --color-card-foreground: #d4cbb8;
+  --color-popover: #0c161c;
+  --color-popover-foreground: #d4cbb8;
+
+  --color-primary: #b58900;
+  --color-primary-foreground: #1a1500;
+
+  --color-secondary: #14212a;
+  --color-secondary-foreground: #c8bfa8;
+
+  --color-accent: #cb4b16;
+  --color-accent-foreground: #1a0a00;
+
+  --color-muted: #1a2a33;
+  --color-muted-foreground: #586e75;
+
+  --color-success: #859900;
+  --color-warning: #b58900;
+  --color-destructive: #dc322f;
+  --color-destructive-foreground: #fafafa;
+
+  --color-foreground: #d4cbb8;
+  --color-border: #1e333d;
+  --color-input: #182830;
+  --color-ring: #b58900;
+
+  --color-sidebar: #070f14;
+  --color-sidebar-foreground: #c8bfa8;
+  --color-sidebar-border: #1a2e38;
+  --color-sidebar-primary: #b58900;
+  --color-sidebar-primary-foreground: #1a1500;
+  --color-sidebar-accent: #1a2a33;
+  --color-sidebar-accent-foreground: #c8bfa8;
+  --color-sidebar-muted: #1a2a33;
+  --color-sidebar-muted-foreground: #586e75;
+  --color-sidebar-ring: #b58900;
+}
+
+/* ============================================
+   THEME: CARBON
+   Pure grayscale with electric blue accent
+   ============================================ */
+html[data-theme="carbon"] {
+  --color-background: #0a0a0a;
+  --color-surface: #111111;
+  --color-card: #161616;
+  --color-card-foreground: #e8e8e8;
+  --color-popover: #0d0d0d;
+  --color-popover-foreground: #e8e8e8;
+
+  --color-primary: #60a5fa;
+  --color-primary-foreground: #000510;
+
+  --color-secondary: #1a1a1a;
+  --color-secondary-foreground: #c0c0c0;
+
+  --color-accent: #2563eb;
+  --color-accent-foreground: #eff6ff;
+
+  --color-muted: #1f1f1f;
+  --color-muted-foreground: #666666;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-destructive: #991b1b;
+  --color-destructive-foreground: #fef2f2;
+
+  --color-foreground: #e8e8e8;
+  --color-border: #262626;
+  --color-input: #202020;
+  --color-ring: #60a5fa;
+
+  --color-sidebar: #080808;
+  --color-sidebar-foreground: #c0c0c0;
+  --color-sidebar-border: #222222;
+  --color-sidebar-primary: #60a5fa;
+  --color-sidebar-primary-foreground: #000510;
+  --color-sidebar-accent: #1f1f1f;
+  --color-sidebar-accent-foreground: #c0c0c0;
+  --color-sidebar-muted: #1f1f1f;
+  --color-sidebar-muted-foreground: #666666;
+  --color-sidebar-ring: #60a5fa;
+}
+
+/* ============================================
+   THEME: OCEAN
+   Deep blue-green with coral accent
+   ============================================ */
+html[data-theme="ocean"] {
+  --color-background: #060e14;
+  --color-surface: #0a1a24;
+  --color-card: #0e2230;
+  --color-card-foreground: #d8e8f0;
+  --color-popover: #081820;
+  --color-popover-foreground: #d8e8f0;
+
+  --color-primary: #7dd3fc;
+  --color-primary-foreground: #001020;
+
+  --color-secondary: #102838;
+  --color-secondary-foreground: #b8d0e0;
+
+  --color-accent: #ff9f7a;
+  --color-accent-foreground: #1a0a00;
+
+  --color-muted: #163040;
+  --color-muted-foreground: #5a8098;
+
+  --color-success: #6ee7b7;
+  --color-warning: #fcd34d;
+  --color-destructive: #b4533f;
+  --color-destructive-foreground: #fff7ed;
+
+  --color-foreground: #d8e8f0;
+  --color-border: #1e3a4e;
+  --color-input: #183040;
+  --color-ring: #7dd3fc;
+
+  --color-sidebar: #040c14;
+  --color-sidebar-foreground: #b8d0e0;
+  --color-sidebar-border: #163248;
+  --color-sidebar-primary: #7dd3fc;
+  --color-sidebar-primary-foreground: #001020;
+  --color-sidebar-accent: #163040;
+  --color-sidebar-accent-foreground: #b8d0e0;
+  --color-sidebar-muted: #163040;
+  --color-sidebar-muted-foreground: #5a8098;
+  --color-sidebar-ring: #7dd3fc;
+}
+
+/* ============================================
+   THEME: EMBER
+   Warm dark with orange-red glow
+   ============================================ */
+html[data-theme="ember"] {
+  --color-background: #0f0a08;
+  --color-surface: #1a110e;
+  --color-card: #231815;
+  --color-card-foreground: #f0e6e0;
+  --color-popover: #140d0a;
+  --color-popover-foreground: #f0e6e0;
+
+  --color-primary: #f97316;
+  --color-primary-foreground: #1a0a00;
+
+  --color-secondary: #2a1e18;
+  --color-secondary-foreground: #d8c8c0;
+
+  --color-accent: #fbbf24;
+  --color-accent-foreground: #1a1400;
+
+  --color-muted: #33241c;
+  --color-muted-foreground: #8a7568;
+
+  --color-success: #a3e635;
+  --color-warning: #fbbf24;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #fafafa;
+
+  --color-foreground: #f0e6e0;
+  --color-border: #3d2e26;
+  --color-input: #332820;
+  --color-ring: #f97316;
+
+  --color-sidebar: #120c09;
+  --color-sidebar-foreground: #d8c8c0;
+  --color-sidebar-border: #382a22;
+  --color-sidebar-primary: #f97316;
+  --color-sidebar-primary-foreground: #1a0a00;
+  --color-sidebar-accent: #33241c;
+  --color-sidebar-accent-foreground: #d8c8c0;
+  --color-sidebar-muted: #33241c;
+  --color-sidebar-muted-foreground: #8a7568;
+  --color-sidebar-ring: #f97316;
+}

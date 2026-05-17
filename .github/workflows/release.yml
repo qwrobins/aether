@@ -43,10 +43,16 @@ jobs:
           fi
 
           package_version="$(node -p "require('./package.json').version")"
+          manifest_version="$(node -e "const fs=require('fs'); const p='.release-please-manifest.json'; if (fs.existsSync(p)) process.stdout.write(require('./'+p)['.'] || '');")"
           expected_tag="v${package_version}"
 
           if [[ "${tag}" != "${expected_tag}" ]]; then
             echo "Tag ${tag} does not match package.json version ${package_version}" >&2
+            exit 1
+          fi
+
+          if [[ -n "${manifest_version}" && "${manifest_version}" != "${package_version}" ]]; then
+            echo ".release-please-manifest.json version ${manifest_version} does not match package.json version ${package_version}" >&2
             exit 1
           fi
 

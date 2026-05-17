@@ -26,6 +26,7 @@ export function LocalPanel() {
     refresh,
     selectFile,
     setSort,
+    setViewMode,
   } = useLocalPanelStore();
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -215,9 +216,11 @@ export function LocalPanel() {
         label="Local"
         path={currentPath}
         isActive={true}
+        viewMode={viewMode}
         onNavigate={navigateTo}
         onRefresh={refresh}
         onNewFolder={handleNewFolder}
+        onViewModeChange={setViewMode}
       />
 
       {error && (

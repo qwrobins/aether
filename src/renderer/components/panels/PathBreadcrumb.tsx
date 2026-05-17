@@ -1,12 +1,4 @@
-import {
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-  BreadcrumbEllipsis,
-} from '@/components/ui/breadcrumb';
+import { ChevronRight } from 'lucide-react';
 
 interface PathBreadcrumbProps {
   path: string;
@@ -23,7 +15,6 @@ export function PathBreadcrumb({
   const segments = normalized.split('/').filter(Boolean);
   const isS3Prefix = mode === 's3-prefix';
 
-  // On Unix, the root is "/"; on Windows it might be "C:/"
   const isUnix = normalized.startsWith('/');
   let rootLabel = '/';
   let rootPath = '/';
@@ -51,35 +42,48 @@ export function PathBreadcrumb({
   }
 
   return (
-    <Breadcrumb>
-      <BreadcrumbList className="flex-nowrap text-[12px] gap-1">
-        <BreadcrumbItem>
-          <BreadcrumbLink
-            className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 items-center overflow-hidden"
+    >
+      <ol className="flex min-w-0 items-center gap-0.5 overflow-hidden">
+        <li className="flex shrink-0 items-center">
+          <button
             onClick={() => onNavigate(rootPath)}
+            className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none"
           >
             {rootLabel}
-          </BreadcrumbLink>
-        </BreadcrumbItem>
+          </button>
+        </li>
 
         {shouldCollapse && (
           <>
-            <BreadcrumbSeparator className="[&>svg]:size-3" />
-            <BreadcrumbItem>
-              <BreadcrumbLink
-                className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground"
+            <li className="flex shrink-0 items-center gap-0.5">
+              <ChevronRight
+                size={12}
+                className="shrink-0 text-muted-foreground/30"
+                aria-hidden="true"
+              />
+              <button
                 onClick={() => {
-                  const idx = (isS3Prefix || isUnix) ? 0 : 1;
+                  const idx = isS3Prefix || isUnix ? 0 : 1;
                   onNavigate(buildPath(idx));
                 }}
+                className="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none"
               >
                 {displaySegments[0]}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator className="[&>svg]:size-3" />
-            <BreadcrumbItem>
-              <BreadcrumbEllipsis className="size-5" />
-            </BreadcrumbItem>
+              </button>
+            </li>
+            <li className="flex shrink-0 items-center gap-0.5">
+              <ChevronRight
+                size={12}
+                className="shrink-0 text-muted-foreground/30"
+                aria-hidden="true"
+              />
+              <span className="shrink-0 px-1 text-[12px] text-muted-foreground/40">
+                &hellip;
+              </span>
+            </li>
           </>
         )}
 
@@ -88,31 +92,39 @@ export function PathBreadcrumb({
             const realIndex = shouldCollapse
               ? displaySegments.length - 2 + i
               : i;
-            const fullIndex = (isS3Prefix || isUnix) ? realIndex : realIndex + 1;
+            const fullIndex = isS3Prefix || isUnix ? realIndex : realIndex + 1;
             const isLast = realIndex === displaySegments.length - 1;
 
             return (
-              <span key={fullIndex} className="contents">
-                <BreadcrumbSeparator className="[&>svg]:size-3" />
-                <BreadcrumbItem>
-                  {isLast ? (
-                    <BreadcrumbPage className="text-[12px] max-w-[150px] truncate">
-                      {segment}
-                    </BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbLink
-                      className="cursor-pointer text-[12px] text-muted-foreground hover:text-foreground max-w-[120px] truncate"
-                      onClick={() => onNavigate(buildPath(fullIndex))}
-                    >
-                      {segment}
-                    </BreadcrumbLink>
-                  )}
-                </BreadcrumbItem>
-              </span>
+              <li
+                key={fullIndex}
+                className="flex min-w-0 shrink-0 items-center gap-0.5"
+              >
+                <ChevronRight
+                  size={12}
+                  className="shrink-0 text-muted-foreground/30"
+                  aria-hidden="true"
+                />
+                {isLast ? (
+                  <span
+                    aria-current="page"
+                    className="max-w-[160px] truncate rounded bg-white/[0.04] px-1.5 py-0.5 text-[12px] font-medium text-foreground"
+                  >
+                    {segment}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => onNavigate(buildPath(fullIndex))}
+                    className="max-w-[120px] shrink-0 truncate rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-white/[0.04] hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none"
+                  >
+                    {segment}
+                  </button>
+                )}
+              </li>
             );
-          }
+          },
         )}
-      </BreadcrumbList>
-    </Breadcrumb>
+      </ol>
+    </nav>
   );
 }
