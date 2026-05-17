@@ -199,11 +199,11 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
   })();
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <Tabs
         value={activeTab}
         onValueChange={handleTabChange}
-        className="flex flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         {/* Only show tabs when creating new connection */}
         {!initialProfile && (
@@ -216,7 +216,7 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
           </TabsList>
         )}
 
-        <div className="mt-4 flex-1 overflow-y-auto px-0.5">
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-2">
           <TabsContent value="s3">
             <S3ConnectionForm formData={formData} onChange={handleChange} />
           </TabsContent>
@@ -232,7 +232,7 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
       </Tabs>
 
       {/* Footer actions */}
-      <div className="flex items-center gap-2 border-t border-border pt-4 mt-4">
+      <div className="mt-4 flex items-center gap-2 border-t border-border px-3 pt-4">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>

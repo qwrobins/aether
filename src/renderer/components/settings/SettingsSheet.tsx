@@ -9,6 +9,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { useUiStore, type AppTheme } from '@/stores/uiStore';
+import packageJson from '../../../../package.json';
 
 interface ThemeOption {
   id: AppTheme;
@@ -186,6 +187,10 @@ export function SettingsSheet() {
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="border-t border-border/60 pt-3 text-center text-[11px] text-muted-foreground">
+          Aether v{packageJson.version}
         </div>
       </SheetContent>
     </Sheet>

@@ -1,6 +1,6 @@
 # Aether
 
-A modern desktop file transfer application for **AWS S3**, **SFTP**, and **Tailscale Taildrop**, built with Electron, React, and a custom dark UI theme.
+A modern desktop file transfer application for **AWS S3**, **SFTP**, **network filesystems**, **object storage**, and **Tailscale Taildrop**, built with Electron, React, and a custom dark UI theme.
 
 Aether provides a dual-pane file manager with drag-and-drop transfers, multiple simultaneous connections, recursive directory operations, and encrypted credential storage — all wrapped in a warm indigo-tinted interface designed to feel atmospheric rather than flat.
 
@@ -17,6 +17,8 @@ Aether provides a dual-pane file manager with drag-and-drop transfers, multiple 
 ### File Transfer
 - **AWS S3** — browse buckets, upload/download objects, create folders, batch delete with retry
 - **SFTP** — password or SSH key authentication, full remote filesystem browsing
+- **Network filesystems** — connect to SMB, NFS, WebDAV, FTP/FTPS, and rsync targets
+- **Object storage** — connect to Azure Blob Storage and Google Cloud Storage alongside AWS S3
 - **Tailscale Taildrop** — send local files to eligible tailnet devices from a built-in destination pane
 - **Drag and drop** between panels or from the OS file manager
 - **Recursive directory transfers** — directories are automatically expanded into individual file transfers
@@ -34,15 +36,17 @@ Aether provides a dual-pane file manager with drag-and-drop transfers, multiple 
 - Taildrop is documented by Tailscale as alpha; unsupported, disabled, or unavailable states are surfaced in the UI.
 
 ### Connection Management
-- Save and manage multiple S3 and SFTP connection profiles
+- Save and manage multiple S3, SFTP, SMB, NFS, WebDAV, FTP/FTPS, rsync, Azure Blob Storage, and Google Cloud Storage profiles
 - S3 auth methods: access keys, IAM role assumption, named AWS profile, default credential chain
 - SFTP auth methods: password, SSH private key (with optional passphrase)
+- Network connection options: mounted share paths for SMB/NFS/WebDAV, password-based FTP/FTPS, and SSH-backed rsync
+- Object storage options: Azure account keys/SAS tokens and GCS service account keys
 - Credentials encrypted at rest via Electron safeStorage
 - Test connection before saving
 
 ### Dual-Pane File Browser
 - **Local panel** (left) — browse the local filesystem
-- **Remote panel** (right) — browse S3 buckets/objects or SFTP servers
+- **Remote panel** (right) — browse S3 buckets/objects, SFTP servers, SMB/NFS/WebDAV shares, FTP/FTPS/rsync targets, Azure Blob containers, and GCS buckets
 - Sortable columns (name, size, modified date)
 - Keyboard shortcuts: Delete, Ctrl+A (select all), Ctrl+R (refresh), Ctrl+N (new folder), F2 (rename), Escape (clear selection)
 - Shift-click range selection and Ctrl-click multi-selection
@@ -69,6 +73,8 @@ Aether provides a dual-pane file manager with drag-and-drop transfers, multiple 
 | State | Zustand (5 stores) |
 | S3 | @aws-sdk/client-s3, @aws-sdk/lib-storage, @aws-sdk/credential-providers |
 | SFTP | ssh2-sftp-client |
+| Network Filesystems | Local mounts, FTP/FTPS, rsync |
+| Object Storage | Azure Blob Storage, Google Cloud Storage |
 | Taildrop | Local Tailscale CLI |
 | Transfers | p-queue (concurrency control) |
 | Storage | electron-store (JSON) + Electron safeStorage (encryption) |
@@ -190,6 +196,8 @@ src/
 │   │   ├── filesystem.handlers.ts # Local filesystem ops
 │   │   ├── s3.handlers.ts         # S3 connect/disconnect + object ops
 │   │   ├── sftp.handlers.ts       # SFTP connect/disconnect + file ops
+│   │   ├── network-filesystem.handlers.ts # SMB/NFS/WebDAV and object storage browsing
+│   │   ├── rsync.handlers.ts      # Rsync-backed browsing and transfers
 │   │   ├── taildrop.handlers.ts   # Taildrop target/receive IPC
 │   │   └── transfer.handlers.ts   # Transfer queue management
 │   ├── services/                  # Business logic
@@ -198,6 +206,8 @@ src/
 │   │   ├── filesystem.service.ts  # Local fs operations
 │   │   ├── s3.service.ts          # AWS S3 client + operations
 │   │   ├── sftp.service.ts        # SSH2 SFTP client + operations
+│   │   ├── network-filesystem.service.ts # Mounted share, Azure Blob, and GCS operations
+│   │   ├── rsync.service.ts       # Rsync command integration
 │   │   ├── taildrop.service.ts    # Local Tailscale CLI operations
 │   │   └── transfer.service.ts    # Transfer engine (p-queue)
 │   └── utils/
@@ -220,7 +230,7 @@ src/
     ├── constants/
     │   └── channels.ts            # IPC channel name constants
     └── types/
-        ├── connection.ts          # S3/SFTP profile types
+        ├── connection.ts          # S3, SFTP, network filesystem, and object storage profile types
         ├── filesystem.ts          # FileEntry, DirectoryListing
         ├── ipc.ts                 # Fully typed IPC map
         ├── taildrop.ts            # Taildrop target/status types
@@ -252,6 +262,8 @@ All channels are defined in `src/shared/constants/channels.ts` and typed in `src
 | Connections | `conn:list`, `conn:save`, `conn:delete`, `conn:test`, `conn:connect`, `conn:disconnect` |
 | S3 | `s3:list-buckets`, `s3:list-objects`, `s3:delete-object`, `s3:create-folder`, `s3:list-profiles`, `s3:list-roles` |
 | SFTP | `sftp:list`, `sftp:mkdir`, `sftp:delete`, `sftp:rename` |
+| Network filesystems | `netfs:list`, `netfs:mkdir`, `netfs:delete`, `netfs:rename` |
+| Rsync | `rsync:list`, `rsync:mkdir`, `rsync:delete`, `rsync:rename` |
 | Taildrop | `taildrop:status`, `taildrop:list-targets`, `taildrop:receive` |
 | Transfers | `transfer:start`, `transfer:cancel`, `transfer:clear`, `transfer:list` |
 | Events | `transfer:progress`, `transfer:complete`, `transfer:error` |
