@@ -1,6 +1,7 @@
-import { Plus, Pencil, Trash2, Cloud, Server, Network, FolderSync } from 'lucide-react';
+import { Plus, Pencil, Trash2, Cloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import type { ConnectionProfile } from '@shared/types/connection';
 
 interface ConnectionListProps {
@@ -40,19 +41,6 @@ function getAccentClass(type: ConnectionProfile['type']): string {
   return 'bg-amber-500';
 }
 
-function getIcon(profile: ConnectionProfile) {
-  if (profile.type === 's3' || profile.type === 'azure-blob' || profile.type === 'gcs') {
-    return <Cloud size={16} className="text-primary/80" />;
-  }
-  if (profile.type === 'sftp' || profile.type === 'ftp' || profile.type === 'ftps') {
-    return <Server size={16} className="text-emerald-400/80" />;
-  }
-  if (profile.type === 'rsync') {
-    return <FolderSync size={16} className="text-emerald-400/80" />;
-  }
-  return <Network size={16} className="text-amber-300/80" />;
-}
-
 export function ConnectionList({ profiles, onEdit, onDelete, onNewConnection }: ConnectionListProps) {
   return (
     <div className="flex flex-col gap-2 px-1">
@@ -81,7 +69,7 @@ export function ConnectionList({ profiles, onEdit, onDelete, onNewConnection }: 
           {/* Content */}
           <div className="flex flex-1 items-center gap-3 px-3">
             <div className="flex size-8 items-center justify-center rounded-md bg-white/[0.04]">
-              {getIcon(profile)}
+              <ProviderIcon type={profile.type} size={16} />
             </div>
 
             <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">

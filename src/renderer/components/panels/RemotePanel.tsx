@@ -10,6 +10,7 @@ import { FileList } from './FileList';
 import { DropZone } from './DropZone';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { TaildropPanel } from './TaildropPanel';
+import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CloudOff, Database, ChevronLeft } from 'lucide-react';
@@ -62,7 +63,7 @@ function BucketList() {
             onClick={() => selectBucket(bucket)}
             className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-[13px] transition-colors duration-150 hover:bg-white/[0.03]"
           >
-            <Database className="h-4 w-4 text-primary/80" />
+            <ProviderIcon type="s3-bucket" size={16} />
             <span>{bucket}</span>
           </button>
         ))}
