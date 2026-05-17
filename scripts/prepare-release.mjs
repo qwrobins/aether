@@ -364,7 +364,14 @@ const packageVersion = normalizeVersion(currentPackage.version);
 const baseVersion = previousTag ? normalizeVersion(previousTag) : packageVersion;
 
 if (previousTag && packageVersion !== baseVersion) {
-  if (compareVersions(packageVersion, baseVersion) > 0 && hasPreparedReleaseMetadata(packageVersion)) {
+  if (compareVersions(packageVersion, baseVersion) < 0) {
+    throw new Error(
+      `package.json version ${currentPackage.version} is older than latest release tag ${previousTag}. ` +
+        "Sync package.json with the latest tag before preparing the next release.",
+    );
+  }
+
+  if (hasPreparedReleaseMetadata(packageVersion)) {
     const commits = commitsSince(previousTag);
     if (!dryRun) {
       writeFileSync("CHANGELOG.md", writeChangelogEntry(packageVersion, previousTag, commits));
@@ -378,23 +385,19 @@ if (previousTag && packageVersion !== baseVersion) {
     );
     process.exit(0);
   }
-
-  throw new Error(
-    `package.json version ${currentPackage.version} does not match latest release tag ${previousTag}. ` +
-      "Sync package.json with the latest tag before preparing the next release.",
-  );
 }
 
 const commits = commitsSince(previousTag);
-const bump = releaseBump(commits);
+const isPackageVersionAhead = previousTag && compareVersions(packageVersion, baseVersion) > 0;
+const bump = isPackageVersionAhead ? null : releaseBump(commits);
 
-if (!bump) {
+if (!bump && !isPackageVersionAhead) {
   setOutput("released", "false");
   console.log("No releasable conventional commits found.");
   process.exit(0);
 }
 
-const nextVersion = bumpVersion(baseVersion, bump);
+const nextVersion = isPackageVersionAhead ? packageVersion : bumpVersion(baseVersion, bump);
 const nextTag = `v${nextVersion}`;
 
 if (existsSync(".release-please-manifest.json")) {
@@ -417,4 +420,7 @@ if (!dryRun) {
 setOutput("released", "true");
 setOutput("version", nextVersion);
 setOutput("tag", nextTag);
-console.log(`${dryRun ? "Would prepare" : "Prepared"} ${nextTag} from ${previousTag || "initial commit"} using a ${bump} bump.`);
+console.log(
+  `${dryRun ? "Would prepare" : "Prepared"} ${nextTag} from ${previousTag || "initial commit"}` +
+    (bump ? ` using a ${bump} bump.` : " using the existing package.json version."),
+);
