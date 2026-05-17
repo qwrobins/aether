@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.20](https://github.com/qwrobins/aether/compare/v0.1.18...v0.1.20) (2026-05-17)
+
+### Automation
+
+* Fix prepare release version guard ([#41](https://github.com/qwrobins/aether/pull/41))
+  * Allow prepare-release to generate metadata when package.json is already ahead of the latest release tag
+  * Keep rejecting package versions older than the latest tag
+  * Preserve the existing already-prepared metadata recovery path
+
+### Miscellaneous
+
+* Refresh Aether UI ([#40](https://github.com/qwrobins/aether/pull/40))
+  * Revamp the dual-pane UI with refreshed list/grid surfaces, title bar activity pills, transfer queue styling, and theme controls
+  * Update app icon assets and use the new icon in the title bar
+  * Tune theme/destructive context-menu colors, add transfer retry feedback, and improve icon-button accessibility
+  * Bump Aether to 0.1.20 and validate release manifest/package version sync
+
+### Bug Fixes
+
+* Fix Taildrop disconnected state refresh ([#39](https://github.com/qwrobins/aether/pull/39))
+  * Detect stopped or signed-out Tailscale backends using `tailscale status --json` instead of treating CLI presence as availability
+  * Clear stale Taildrop targets when availability/listing fails and silently refresh the panel every 10 seconds plus on focus/visibility changes
+  * Bump Aether to `0.1.19`
+
 ## [0.1.18](https://github.com/qwrobins/aether/compare/v0.1.17...v0.1.18) (2026-05-16)
 
 ### Bug Fixes
