@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { House, Monitor, Download, Cloud, Server, Settings, X, HardDrive, Disc, Slash, CircleDashed, Network, Cog } from 'lucide-react';
+import { House, Monitor, Download, Settings, X, HardDrive, Disc, Slash, CircleDashed, Cog } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sidebar,
@@ -21,6 +21,7 @@ import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useUiStore } from '@/stores/uiStore';
 import { ConnectionManager } from '@/components/connection/ConnectionManager';
 import { SettingsSheet } from '@/components/settings/SettingsSheet';
+import { ProviderIcon } from '@/components/shared/ProviderIcon';
 
 const quickAccessItems = [
   { label: 'Home', icon: House, pathKey: 'home' as const },
@@ -200,7 +201,7 @@ export function AppSidebar() {
                             : `${drive.name} — not mounted${drive.size ? ` (${drive.size})` : ''} — click to mount`
                         }
                         onClick={() => handleDriveClick(drive)}
-                        className={cn(!drive.isMounted && drive.path !== '/' && 'opacity-50')}
+                        className={cn(!drive.isMounted && drive.path !== '/' && 'opacity-70')}
                       >
                         {drive.path === '/' ? (
                           <Slash size={16} className="text-muted-foreground/70" />
@@ -212,7 +213,7 @@ export function AppSidebar() {
                           <HardDrive size={16} className="text-muted-foreground/70" />
                         )}
                         <span className="truncate">{drive.name}</span>
-                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/40 group-data-[collapsible=icon]:hidden">
+                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/80 group-data-[collapsible=icon]:hidden">
                           {drive.isMounted ? drive.size || drive.path : drive.size || 'unmounted'}
                         </span>
                       </SidebarMenuButton>
@@ -242,7 +243,7 @@ export function AppSidebar() {
                       'inline-block size-[6px] shrink-0 rounded-full',
                       mode === 'taildrop' ? 'bg-accent' : 'bg-muted-foreground/40',
                     )} />
-                    <Network size={14} className="text-accent/70" />
+                    <ProviderIcon type="tailscale" size={14} className="text-accent/80" />
                     <span className="truncate text-[13px]">Tailscale</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -285,11 +286,7 @@ export function AppSidebar() {
                         )}
                       >
                         <ConnectionStatusDot profileId={profile.id} />
-                        {profile.type === 's3' ? (
-                          <Cloud size={14} className="text-primary/60" />
-                        ) : (
-                          <Server size={14} className="text-emerald-400/60" />
-                        )}
+                        <ProviderIcon type={profile.type} size={14} />
                         <span className="truncate text-[13px]">{profile.name}</span>
                         {activeConnectionId === profile.id && (
                           <button

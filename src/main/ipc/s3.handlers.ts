@@ -2,8 +2,15 @@ import { IpcMain } from 'electron';
 import { S3Service } from '../services/s3.service';
 import { ConnectionService } from '../services/connection.service';
 import { sftpService } from './sftp.handlers';
+import { rsyncService } from './rsync.handlers';
+import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
-import type { S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
+import type {
+  MountableConnectionProfile,
+  RsyncConnectionProfile,
+  S3ConnectionProfile,
+  SftpConnectionProfile,
+} from '@shared/types/connection';
 
 export const s3Service = new S3Service();
 
@@ -19,13 +26,21 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
     } else if (profile.type === 'sftp') {
       await sftpService.connect(id, profile as SftpConnectionProfile);
       return { status: 'connected' };
+    } else if (profile.type === 'rsync') {
+      await rsyncService.connect(id, profile as RsyncConnectionProfile);
+      return { status: 'connected' };
+    } else if (profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav') {
+      await networkFilesystemService.connect(id, profile as MountableConnectionProfile);
+      return { status: 'connected' };
     }
-    throw new Error(`Connection type ${(profile as { type: string }).type} not supported`);
+    throw new Error(`Unsupported connection type: ${profile.type}`);
   });
 
   ipcMain.handle(IpcChannels.CONN_DISCONNECT, async (_event, id: string) => {
     s3Service.disconnect(id);
     await sftpService.disconnect(id);
+    await rsyncService.disconnect(id);
+    networkFilesystemService.disconnect(id);
   });
 
   ipcMain.handle(IpcChannels.S3_LIST_PROFILES, async () => {

@@ -23,6 +23,18 @@ export const IpcChannels = {
   SFTP_DELETE: 'sftp:delete',
   SFTP_RENAME: 'sftp:rename',
 
+  // Rsync over SSH
+  RSYNC_LIST: 'rsync:list',
+  RSYNC_MKDIR: 'rsync:mkdir',
+  RSYNC_DELETE: 'rsync:delete',
+  RSYNC_RENAME: 'rsync:rename',
+
+  // Mounted network filesystems
+  NETFS_LIST: 'netfs:list',
+  NETFS_MKDIR: 'netfs:mkdir',
+  NETFS_DELETE: 'netfs:delete',
+  NETFS_RENAME: 'netfs:rename',
+
   // Taildrop / Tailscale
   TAILDROP_STATUS: 'taildrop:status',
   TAILDROP_LIST_TARGETS: 'taildrop:list-targets',

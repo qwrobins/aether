@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTaildropStore } from '@/stores/taildropStore';
 import type { TaildropTarget } from '@shared/types/taildrop';
@@ -222,6 +223,7 @@ export function TaildropPanel() {
   return (
     <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
       <div className="flex h-[44px] shrink-0 items-center gap-3 border-b-2 border-b-primary bg-surface/50 px-3 py-2">
+        <ProviderIcon type="tailscale" size={14} className="text-accent/80" />
         <span className="text-[11px] font-medium uppercase tracking-[0.05em] text-muted-foreground">
           Tailscale
         </span>

@@ -1,4 +1,14 @@
-export type ConnectionType = 's3' | 'sftp';
+export type ConnectionType =
+  | 's3'
+  | 'sftp'
+  | 'smb'
+  | 'nfs'
+  | 'webdav'
+  | 'ftp'
+  | 'ftps'
+  | 'rsync'
+  | 'azure-blob'
+  | 'gcs';
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export interface BaseConnectionProfile {
@@ -42,7 +52,65 @@ export interface SftpConnectionProfile extends BaseConnectionProfile {
   defaultPath?: string;
 }
 
-export type ConnectionProfile = S3ConnectionProfile | SftpConnectionProfile;
+export type MountableConnectionType = 'smb' | 'nfs' | 'webdav';
+
+export interface MountableConnectionProfile extends BaseConnectionProfile {
+  type: MountableConnectionType;
+  host: string;
+  share: string;
+  mountPath: string;
+  username?: string;
+  password?: string;
+  domain?: string;
+  defaultPath?: string;
+}
+
+export interface FtpConnectionProfile extends BaseConnectionProfile {
+  type: 'ftp' | 'ftps';
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  defaultPath?: string;
+}
+
+export interface RsyncConnectionProfile extends BaseConnectionProfile {
+  type: 'rsync';
+  host: string;
+  module?: string;
+  username: string;
+  authMethod: 'password' | 'key';
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+  defaultPath?: string;
+  sshPort?: number;
+}
+
+export interface AzureBlobConnectionProfile extends BaseConnectionProfile {
+  type: 'azure-blob';
+  accountName: string;
+  container?: string;
+  accountKey?: string;
+  sasToken?: string;
+  endpoint?: string;
+}
+
+export interface GcsConnectionProfile extends BaseConnectionProfile {
+  type: 'gcs';
+  projectId?: string;
+  bucket?: string;
+  serviceAccountKeyPath?: string;
+}
+
+export type ConnectionProfile =
+  | S3ConnectionProfile
+  | SftpConnectionProfile
+  | MountableConnectionProfile
+  | FtpConnectionProfile
+  | RsyncConnectionProfile
+  | AzureBlobConnectionProfile
+  | GcsConnectionProfile;
 
 export type RedactedS3ConnectionProfile = Omit<
   S3ConnectionProfile,
@@ -54,9 +122,26 @@ export type RedactedSftpConnectionProfile = Omit<
   'password' | 'passphrase'
 >;
 
+export type RedactedMountableConnectionProfile = Omit<MountableConnectionProfile, 'password'>;
+export type RedactedFtpConnectionProfile = Omit<FtpConnectionProfile, 'password'>;
+export type RedactedRsyncConnectionProfile = Omit<
+  RsyncConnectionProfile,
+  'password' | 'passphrase'
+>;
+export type RedactedAzureBlobConnectionProfile = Omit<
+  AzureBlobConnectionProfile,
+  'accountKey' | 'sasToken'
+>;
+export type RedactedGcsConnectionProfile = Omit<GcsConnectionProfile, 'serviceAccountKeyPath'>;
+
 export type RedactedConnectionProfile =
   | RedactedS3ConnectionProfile
-  | RedactedSftpConnectionProfile;
+  | RedactedSftpConnectionProfile
+  | RedactedMountableConnectionProfile
+  | RedactedFtpConnectionProfile
+  | RedactedRsyncConnectionProfile
+  | RedactedAzureBlobConnectionProfile
+  | RedactedGcsConnectionProfile;
 
 export interface ActiveConnection {
   id: string;

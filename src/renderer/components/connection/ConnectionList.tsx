@@ -1,6 +1,7 @@
-import { Plus, Pencil, Trash2, Cloud, Server } from 'lucide-react';
+import { Plus, Pencil, Trash2, Cloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import type { ConnectionProfile } from '@shared/types/connection';
 
 interface ConnectionListProps {
@@ -11,12 +12,33 @@ interface ConnectionListProps {
 }
 
 function getDisplayHost(profile: ConnectionProfile): string {
-  if (profile.type === 's3') {
-    return profile.defaultBucket
-      ? `${profile.region} / ${profile.defaultBucket}`
-      : profile.region;
+  switch (profile.type) {
+    case 's3':
+      return profile.defaultBucket ? `${profile.region} / ${profile.defaultBucket}` : profile.region;
+    case 'sftp':
+      return `${profile.host}:${profile.port}`;
+    case 'smb':
+    case 'nfs':
+    case 'webdav':
+      return `${profile.host} / ${profile.share}`;
+    case 'ftp':
+    case 'ftps':
+      return `${profile.host}:${profile.port}`;
+    case 'rsync':
+      return profile.module ? `${profile.host} / ${profile.module}` : profile.host;
+    case 'azure-blob':
+      return profile.container ? `${profile.accountName} / ${profile.container}` : profile.accountName;
+    case 'gcs':
+      return profile.bucket ? `${profile.projectId || 'gcs'} / ${profile.bucket}` : profile.projectId || 'GCS';
   }
-  return `${profile.host}:${profile.port}`;
+}
+
+function getAccentClass(type: ConnectionProfile['type']): string {
+  if (type === 's3' || type === 'azure-blob' || type === 'gcs') return 'bg-primary';
+  if (type === 'sftp' || type === 'rsync' || type === 'ftp' || type === 'ftps') {
+    return 'bg-emerald-500';
+  }
+  return 'bg-amber-500';
 }
 
 export function ConnectionList({ profiles, onEdit, onDelete, onNewConnection }: ConnectionListProps) {
@@ -40,18 +62,14 @@ export function ConnectionList({ profiles, onEdit, onDelete, onNewConnection }: 
           {/* Accent strip */}
           <div
             className={`w-1 self-stretch rounded-l-lg ${
-              profile.type === 's3' ? 'bg-primary' : 'bg-emerald-500'
+              getAccentClass(profile.type)
             }`}
           />
 
           {/* Content */}
           <div className="flex flex-1 items-center gap-3 px-3">
             <div className="flex size-8 items-center justify-center rounded-md bg-white/[0.04]">
-              {profile.type === 's3' ? (
-                <Cloud size={16} className="text-primary/80" />
-              ) : (
-                <Server size={16} className="text-emerald-400/80" />
-              )}
+              <ProviderIcon type={profile.type} size={16} />
             </div>
 
             <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">

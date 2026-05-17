@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/types/filesystem';
-import type { ConnectionProfile, ConnectionStatus, S3ConnectionProfile, SftpConnectionProfile } from '@shared/types/connection';
+import type {
+  ConnectionProfile,
+  ConnectionStatus,
+  MountableConnectionProfile,
+  S3ConnectionProfile,
+  SftpConnectionProfile,
+} from '@shared/types/connection';
 
 interface RemotePanelState {
   mode: 'connection' | 'taildrop';
@@ -78,11 +84,38 @@ function getParentPrefix(prefix: string): string {
 }
 
 function getParentPath(path: string): string {
-  // SFTP uses absolute paths with '/' delimiter
   const trimmed = path.replace(/\/+$/, '');
   const lastSlash = trimmed.lastIndexOf('/');
   if (lastSlash <= 0) return '/';
   return trimmed.substring(0, lastSlash);
+}
+
+function isMountableProfile(profile: ConnectionProfile): profile is MountableConnectionProfile {
+  return profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav';
+}
+
+async function listRemoteEntries(
+  activeConnectionId: string,
+  activeProfile: ConnectionProfile,
+  currentBucket: string | null,
+  path: string,
+) {
+  if (activeProfile.type === 'sftp') {
+    return window.api.invoke('sftp:list', activeConnectionId, path);
+  }
+  if (activeProfile.type === 'rsync') {
+    return window.api.invoke('rsync:list', activeConnectionId, path);
+  }
+  if (isMountableProfile(activeProfile)) {
+    return window.api.invoke('netfs:list', activeConnectionId, path);
+  }
+  if (activeProfile.type === 's3') {
+    if (!currentBucket) {
+      throw new Error('Select an S3 bucket before listing objects');
+    }
+    return window.api.invoke('s3:list-objects', activeConnectionId, currentBucket, path);
+  }
+  throw new Error(`${activeProfile.type} browsing is not implemented yet`);
 }
 
 const initialState = {
@@ -136,6 +169,10 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       } else if (profile.type === 'sftp') {
         const defaultPath = (profile as SftpConnectionProfile).defaultPath || '/';
         await get().navigateTo(defaultPath);
+      } else if (isMountableProfile(profile)) {
+        await get().navigateTo(profile.defaultPath || profile.mountPath || '/');
+      } else if (profile.type === 'rsync') {
+        await get().navigateTo(profile.defaultPath || profile.module || '/');
       }
     } catch (err) {
       set({
@@ -194,9 +231,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
 
     set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
-      const listing = activeProfile.type === 'sftp'
-        ? await window.api.invoke('sftp:list', activeConnectionId, path)
-        : await window.api.invoke('s3:list-objects', activeConnectionId, currentBucket as string, path);
+      const listing = await listRemoteEntries(activeConnectionId, activeProfile, currentBucket, path);
       set({
         currentPath: path,
         entries: sortEntries(listing.entries, sortField, sortDirection),
@@ -214,7 +249,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
     const { currentPath, activeProfile, navigateTo } = get();
     if (!activeProfile) return;
 
-    if (activeProfile.type === 'sftp') {
+    if (activeProfile.type === 'sftp' || activeProfile.type === 'rsync' || isMountableProfile(activeProfile)) {
       if (currentPath === '/') return;
       const parent = getParentPath(currentPath);
       await navigateTo(parent);
@@ -228,7 +263,11 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   refresh: async () => {
     const { mode, currentPath, currentBucket, activeProfile, navigateTo, loadBuckets } = get();
     if (mode === 'taildrop') return;
-    if (activeProfile?.type === 'sftp') {
+    if (
+      activeProfile?.type === 'sftp' ||
+      activeProfile?.type === 'rsync' ||
+      (activeProfile && isMountableProfile(activeProfile))
+    ) {
       await navigateTo(currentPath);
     } else if (currentBucket) {
       await navigateTo(currentPath);

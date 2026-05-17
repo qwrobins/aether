@@ -2,6 +2,8 @@ import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
 import { stat, mkdir, unlink, rename } from 'node:fs/promises';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -39,6 +41,10 @@ function getRequiredBucket(item: TransferItem): string {
   return item.bucket;
 }
 
+function isMountedNetworkConnectionType(type: TransferItem['connectionType']): boolean {
+  return type === 'smb' || type === 'nfs' || type === 'webdav';
+}
+
 function waitForDrain(writeStream: WriteStream): Promise<void> {
   return new Promise((resolve, reject) => {
     const cleanup = () => {
@@ -64,8 +70,10 @@ export class TransferService {
   private abortControllers: Map<string, AbortController> = new Map();
   private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private sftpClients: Map<string, SftpTransferClient> = new Map();
+  private rsyncClients: Map<string, SftpTransferClient> = new Map();
   private terminalTransfers: Set<string> = new Set();
   private sftpClientFactory?: SftpClientFactory;
+  private rsyncClientFactory?: SftpClientFactory;
   private taildropSender?: TaildropSender;
   private window: BrowserWindow | null = null;
 
@@ -79,6 +87,10 @@ export class TransferService {
 
   setSftpClientFactory(factory: SftpClientFactory): void {
     this.sftpClientFactory = factory;
+  }
+
+  setRsyncClientFactory(factory: SftpClientFactory): void {
+    this.rsyncClientFactory = factory;
   }
 
   setTaildropSender(sender: TaildropSender): void {
@@ -156,8 +168,15 @@ export class TransferService {
       } else if (item.connectionType === 'sftp') {
         const sftpClient = await this.getOrCreateSftpTransferClient(item.id, item.connectionId);
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
+      } else if (item.connectionType === 'rsync') {
+        const rsyncClient = await this.getOrCreateRsyncTransferClient(item.id, item.connectionId);
+        await this.executeSftpTransfer(item, rsyncClient, signal, startTime);
       } else if (item.connectionType === 'taildrop') {
         await this.executeTaildropTransfer(item, signal, startTime);
+      } else if (isMountedNetworkConnectionType(item.connectionType)) {
+        await this.executeLocalFilesystemTransfer(item, signal, startTime);
+      } else {
+        throw new NonRetryableError(`${item.connectionType} transfers are not implemented yet`);
       }
 
       if (signal?.aborted) {
@@ -386,6 +405,68 @@ export class TransferService {
     this.emitProgress(item.id, item.size, item.size, item.speed);
   }
 
+  private async executeLocalFilesystemTransfer(
+    item: TransferItem,
+    signal?: AbortSignal,
+    startTime?: number,
+  ): Promise<void> {
+    const sourceStat = await stat(item.sourcePath);
+    if (sourceStat.isDirectory()) {
+      throw new NonRetryableError('Directory transfer should be expanded before queueing');
+    }
+    item.size = sourceStat.size;
+    const destDir = path.dirname(item.destinationPath);
+    if (destDir && destDir !== '.' && destDir !== '/') {
+      await mkdir(destDir, { recursive: true });
+    }
+
+    await this.copyFileWithProgress(item, item.sourcePath, this.getDownloadPath(item), signal, startTime);
+    if (signal?.aborted) throw new Error('Aborted');
+    await this.finalizeDownload(item);
+  }
+
+  private async copyFileWithProgress(
+    item: TransferItem,
+    sourcePath: string,
+    destinationPath: string,
+    signal?: AbortSignal,
+    startTime?: number,
+  ): Promise<void> {
+    if (signal?.aborted) {
+      throw new Error('Aborted');
+    }
+
+    const readStream = createReadStream(sourcePath);
+    const progressStream = new Transform({
+      transform: (chunk: Buffer, _encoding, callback) => {
+        if (signal?.aborted) {
+          callback(new Error('Aborted'));
+          return;
+        }
+        const copied = item.bytesTransferred + chunk.length;
+        item.bytesTransferred = copied;
+        const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
+        item.speed = elapsed > 0 ? copied / elapsed : 0;
+        this.emitProgress(item.id, copied, item.size, item.speed);
+        callback(null, chunk);
+      },
+    });
+    const writeStream = createWriteStream(destinationPath);
+
+    const abort = () => {
+      readStream.destroy(new Error('Aborted'));
+      progressStream.destroy(new Error('Aborted'));
+      writeStream.destroy(new Error('Aborted'));
+    };
+
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      await pipeline(readStream, progressStream, writeStream);
+    } finally {
+      signal?.removeEventListener('abort', abort);
+    }
+  }
+
   cancel(id: string): void {
     const retryTimer = this.retryTimers.get(id);
     if (retryTimer) {
@@ -465,6 +546,9 @@ export class TransferService {
     item.completedAt = new Date().toISOString();
     item.speed = 0;
     await this.closeSftpTransferClient(item.id, 'abort');
+    if (this.rsyncClients.has(item.id)) {
+      await this.closeRsyncTransferClient(item.id, 'abort');
+    }
     await this.cleanupCancelledDownload(item);
     await this.cleanupTransferResources(item.id);
     this.emitComplete({
@@ -483,6 +567,9 @@ export class TransferService {
 
     this.abortControllers.delete(id);
     await this.closeSftpTransferClient(id, 'disconnect');
+    if (this.rsyncClients.has(id)) {
+      await this.closeRsyncTransferClient(id, 'disconnect');
+    }
   }
 
   private async cleanupCancelledDownload(item: TransferItem): Promise<void> {
@@ -557,6 +644,51 @@ export class TransferService {
       await close.call(client);
     } catch (error) {
       console.warn(`[Aether] Failed to ${mode} SFTP transfer ${id}:`, error);
+    }
+  }
+
+  private async getOrCreateRsyncTransferClient(
+    id: string,
+    connectionId: string,
+  ): Promise<SftpTransferClient> {
+    const existingClient = this.rsyncClients.get(id);
+    if (existingClient) {
+      return existingClient;
+    }
+
+    if (!this.rsyncClientFactory) {
+      throw new NonRetryableError('Rsync client is not connected');
+    }
+
+    const client = await this.rsyncClientFactory(connectionId);
+    this.rsyncClients.set(id, client);
+    return client;
+  }
+
+  private async closeRsyncTransferClient(
+    id: string,
+    mode: 'abort' | 'disconnect',
+  ): Promise<void> {
+    const client = this.rsyncClients.get(id);
+    if (!client) {
+      return;
+    }
+
+    this.rsyncClients.delete(id);
+
+    const close =
+      mode === 'abort'
+        ? client.abort ?? client.disconnect
+        : client.disconnect ?? client.abort;
+
+    if (!close) {
+      return;
+    }
+
+    try {
+      await close.call(client);
+    } catch (error) {
+      console.warn(`[Aether] Failed to ${mode} rsync transfer ${id}:`, error);
     }
   }
 

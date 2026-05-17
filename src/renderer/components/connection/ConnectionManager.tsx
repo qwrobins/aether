@@ -53,6 +53,9 @@ export function ConnectionManager({ open, onOpenChange }: ConnectionManagerProps
         const profileData = {
           ...data,
           ...(data.type === 'sftp' ? { port: Number(data.port) || 22 } : {}),
+          ...(data.type === 'ftp' ? { port: Number(data.port) || 21 } : {}),
+          ...(data.type === 'ftps' ? { port: Number(data.port) || 990 } : {}),
+          ...(data.type === 'rsync' ? { sshPort: Number(data.sshPort) || 22 } : {}),
           ...(typeof editing === 'object' && editing !== null ? { id: editing.id } : {}),
         };
         await saveProfile(profileData as Omit<ConnectionProfile, 'id' | 'createdAt' | 'updatedAt'> & { id?: string });
@@ -70,6 +73,9 @@ export function ConnectionManager({ open, onOpenChange }: ConnectionManagerProps
       const profileData = {
         ...data,
         ...(data.type === 'sftp' ? { port: Number(data.port) || 22 } : {}),
+        ...(data.type === 'ftp' ? { port: Number(data.port) || 21 } : {}),
+        ...(data.type === 'ftps' ? { port: Number(data.port) || 990 } : {}),
+        ...(data.type === 'rsync' ? { sshPort: Number(data.sshPort) || 22 } : {}),
         id: typeof editing === 'object' && editing !== null ? editing.id : 'test',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -103,7 +109,7 @@ export function ConnectionManager({ open, onOpenChange }: ConnectionManagerProps
           </SheetTitle>
           <SheetDescription className="text-[12px]">
             {editing === null
-              ? 'Manage your S3 and SFTP connections'
+              ? 'Manage cloud, SSH, and network filesystem connections'
               : 'Configure connection details'}
           </SheetDescription>
         </SheetHeader>
