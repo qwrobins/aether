@@ -39,6 +39,12 @@ export interface IpcInvokeMap {
   'sftp:delete': { args: [connectionId: string, paths: string[]]; return: SftpDeleteResult };
   'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
 
+  // Rsync over SSH
+  'rsync:list': { args: [connectionId: string, path: string]; return: DirectoryListing };
+  'rsync:mkdir': { args: [connectionId: string, path: string]; return: void };
+  'rsync:delete': { args: [connectionId: string, paths: string[]]; return: SftpDeleteResult };
+  'rsync:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
+
   // Mounted network filesystems
   'netfs:list': { args: [connectionId: string, path?: string]; return: DirectoryListing };
   'netfs:mkdir': { args: [connectionId: string, path: string]; return: void };

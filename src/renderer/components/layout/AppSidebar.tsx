@@ -200,7 +200,7 @@ export function AppSidebar() {
                             : `${drive.name} — not mounted${drive.size ? ` (${drive.size})` : ''} — click to mount`
                         }
                         onClick={() => handleDriveClick(drive)}
-                        className={cn(!drive.isMounted && drive.path !== '/' && 'opacity-50')}
+                        className={cn(!drive.isMounted && drive.path !== '/' && 'opacity-70')}
                       >
                         {drive.path === '/' ? (
                           <Slash size={16} className="text-muted-foreground/70" />
@@ -212,7 +212,7 @@ export function AppSidebar() {
                           <HardDrive size={16} className="text-muted-foreground/70" />
                         )}
                         <span className="truncate">{drive.name}</span>
-                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/40 group-data-[collapsible=icon]:hidden">
+                        <span className="ml-auto font-mono text-[10px] text-muted-foreground/80 group-data-[collapsible=icon]:hidden">
                           {drive.isMounted ? drive.size || drive.path : drive.size || 'unmounted'}
                         </span>
                       </SidebarMenuButton>

@@ -2,10 +2,12 @@ import { IpcMain } from 'electron';
 import { S3Service } from '../services/s3.service';
 import { ConnectionService } from '../services/connection.service';
 import { sftpService } from './sftp.handlers';
+import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 import type {
   MountableConnectionProfile,
+  RsyncConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
 } from '@shared/types/connection';
@@ -24,6 +26,9 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
     } else if (profile.type === 'sftp') {
       await sftpService.connect(id, profile as SftpConnectionProfile);
       return { status: 'connected' };
+    } else if (profile.type === 'rsync') {
+      await rsyncService.connect(id, profile as RsyncConnectionProfile);
+      return { status: 'connected' };
     } else if (profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav') {
       await networkFilesystemService.connect(id, profile as MountableConnectionProfile);
       return { status: 'connected' };
@@ -34,6 +39,7 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
   ipcMain.handle(IpcChannels.CONN_DISCONNECT, async (_event, id: string) => {
     s3Service.disconnect(id);
     await sftpService.disconnect(id);
+    await rsyncService.disconnect(id);
     networkFilesystemService.disconnect(id);
   });
 

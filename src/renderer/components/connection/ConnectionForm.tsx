@@ -48,6 +48,9 @@ const NETWORK_DEFAULTS: Record<string, string> = {
   mountPath: '',
   username: '',
   password: '',
+  authMethod: 'password',
+  privateKeyPath: '',
+  passphrase: '',
   domain: '',
   defaultPath: '',
   port: '',
@@ -175,7 +178,11 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
       return Boolean(formData.host && formData.share && formData.mountPath);
     }
     if (activeTab === 'ftp' || activeTab === 'ftps' || activeTab === 'rsync') {
-      return Boolean(formData.host && formData.username);
+      if (!formData.host || !formData.username) return false;
+      if (activeTab !== 'rsync') return true;
+      return formData.authMethod === 'key'
+        ? Boolean(formData.privateKeyPath)
+        : Boolean(formData.password);
     }
     if (activeTab === 'azure-blob') {
       return Boolean(formData.accountName && (formData.accountKey || formData.sasToken));

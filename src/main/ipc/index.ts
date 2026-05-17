@@ -3,6 +3,7 @@ import { registerFilesystemHandlers } from './filesystem.handlers';
 import { registerConnectionHandlers } from './connection.handlers';
 import { registerS3Handlers } from './s3.handlers';
 import { registerSftpHandlers } from './sftp.handlers';
+import { registerRsyncHandlers } from './rsync.handlers';
 import { registerNetworkFilesystemHandlers } from './network-filesystem.handlers';
 import { registerTransferHandlers } from './transfer.handlers';
 import { registerTaildropHandlers } from './taildrop.handlers';
@@ -12,6 +13,7 @@ export function registerAllIpcHandlers(mainWindow: BrowserWindow): void {
   registerFilesystemHandlers(ipcMain);
   registerConnectionHandlers(ipcMain);
   registerSftpHandlers(ipcMain);
+  registerRsyncHandlers(ipcMain);
   registerNetworkFilesystemHandlers(ipcMain);
   registerS3Handlers(ipcMain);
   registerTransferHandlers(ipcMain, mainWindow);

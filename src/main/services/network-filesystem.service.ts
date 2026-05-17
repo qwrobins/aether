@@ -1,4 +1,11 @@
-import { access, mkdir as fsMkdir, realpath, rm, rename as fsRename } from 'node:fs/promises';
+import {
+  access,
+  mkdir as fsMkdir,
+  realpath,
+  rm,
+  rename as fsRename,
+  stat as fsStat,
+} from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { FilesystemService } from './filesystem.service';
 import type { DirectoryListing } from '@shared/types/filesystem';
@@ -10,7 +17,10 @@ export class NetworkFilesystemService {
 
   async connect(connectionId: string, profile: MountableConnectionProfile): Promise<void> {
     const root = this.normalizeRoot(profile.mountPath);
-    await access(root);
+    const stats = await fsStat(root);
+    if (!stats.isDirectory()) {
+      throw new Error('mountPath must be a directory');
+    }
     this.profiles.set(connectionId, { ...profile, mountPath: root });
   }
 
@@ -62,6 +72,18 @@ export class NetworkFilesystemService {
   getDefaultPath(connectionId: string): string {
     const profile = this.getProfile(connectionId);
     return this.getLexicalPath(connectionId, profile.defaultPath || profile.mountPath);
+  }
+
+  async assertTransferPath(
+    connectionId: string,
+    requestedPath: string,
+    options: { writable?: boolean } = {},
+  ): Promise<void> {
+    if (options.writable) {
+      await this.resolveWritablePath(connectionId, requestedPath);
+    } else {
+      await this.resolveExistingPath(connectionId, requestedPath);
+    }
   }
 
   private getProfile(connectionId: string): MountableConnectionProfile {

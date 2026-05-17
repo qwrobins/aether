@@ -129,7 +129,9 @@ export function RemotePanel() {
           if (payload.panelType !== 'local') return;
 
           for (const entry of payload.entries) {
-            const destPath = activeProfile.type === 'sftp' || isMountableProfile(activeProfile)
+            const destPath = activeProfile.type === 'sftp' ||
+              activeProfile.type === 'rsync' ||
+              isMountableProfile(activeProfile)
               ? `${currentPath.replace(/\/+$/, '')}/${entry.name}`
               : `${currentPath}${entry.name}`;
 
@@ -180,7 +182,9 @@ export function RemotePanel() {
           const filePath = (file as File & { path?: string }).path;
           if (!filePath) continue;
 
-          const destPath = activeProfile.type === 'sftp' || isMountableProfile(activeProfile)
+          const destPath = activeProfile.type === 'sftp' ||
+            activeProfile.type === 'rsync' ||
+            isMountableProfile(activeProfile)
             ? `${currentPath.replace(/\/+$/, '')}/${file.name}`
             : `${currentPath}${file.name}`;
 
@@ -255,6 +259,21 @@ export function RemotePanel() {
             console.error('[Aether] SFTP delete failed:', err);
             toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
           });
+      } else if (activeProfile.type === 'rsync') {
+        window.api
+          .invoke('rsync:delete', activeConnectionId, paths)
+          .then((result) =>
+            refresh().then(() => {
+              const message = getSftpDeleteErrorMessage(result);
+              if (message) {
+                toast.error(message);
+              }
+            }),
+          )
+          .catch((err) => {
+            console.error('[Aether] Rsync delete failed:', err);
+            toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       } else if (isMountableProfile(activeProfile)) {
         window.api
           .invoke('netfs:delete', activeConnectionId, paths)
@@ -284,11 +303,24 @@ export function RemotePanel() {
         window.api
           .invoke('sftp:rename', activeConnectionId, oldPath, newPath)
           .then(() => refresh());
+      } else if (activeProfile.type === 'rsync') {
+        const newPath = oldPath.replace(/[^/]+$/, newName);
+        window.api
+          .invoke('rsync:rename', activeConnectionId, oldPath, newPath)
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] Rsync rename failed:', err);
+            toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       } else if (isMountableProfile(activeProfile)) {
         const newPath = oldPath.replace(/[^/]+$/, newName);
         window.api
           .invoke('netfs:rename', activeConnectionId, oldPath, newPath)
-          .then(() => refresh());
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] Network filesystem rename failed:', err);
+            toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       }
       // S3 doesn't support rename natively
     },
@@ -313,11 +345,24 @@ export function RemotePanel() {
       window.api
         .invoke('sftp:mkdir', activeConnectionId, newPath)
         .then(() => refresh());
+    } else if (activeProfile.type === 'rsync') {
+      const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
+      window.api
+        .invoke('rsync:mkdir', activeConnectionId, newPath)
+        .then(() => refresh())
+        .catch((err) => {
+          console.error('[Aether] Rsync mkdir failed:', err);
+          toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
     } else if (isMountableProfile(activeProfile)) {
       const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
       window.api
         .invoke('netfs:mkdir', activeConnectionId, newPath)
-        .then(() => refresh());
+        .then(() => refresh())
+        .catch((err) => {
+          console.error('[Aether] Network filesystem mkdir failed:', err);
+          toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
     }
   }, [activeConnectionId, activeProfile, currentBucket, currentPath, refresh]);
 
@@ -401,7 +446,10 @@ export function RemotePanel() {
   }
 
   // State 2: SFTP connected — direct file browsing (no bucket selection)
-  if (activeProfile && (activeProfile.type === 'sftp' || isMountableProfile(activeProfile))) {
+  if (
+    activeProfile &&
+    (activeProfile.type === 'sftp' || activeProfile.type === 'rsync' || isMountableProfile(activeProfile))
+  ) {
     return (
       <div
         data-panel="remote"

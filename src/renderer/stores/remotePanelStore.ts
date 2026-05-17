@@ -94,6 +94,30 @@ function isMountableProfile(profile: ConnectionProfile): profile is MountableCon
   return profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav';
 }
 
+async function listRemoteEntries(
+  activeConnectionId: string,
+  activeProfile: ConnectionProfile,
+  currentBucket: string | null,
+  path: string,
+) {
+  if (activeProfile.type === 'sftp') {
+    return window.api.invoke('sftp:list', activeConnectionId, path);
+  }
+  if (activeProfile.type === 'rsync') {
+    return window.api.invoke('rsync:list', activeConnectionId, path);
+  }
+  if (isMountableProfile(activeProfile)) {
+    return window.api.invoke('netfs:list', activeConnectionId, path);
+  }
+  if (activeProfile.type === 's3') {
+    if (!currentBucket) {
+      throw new Error('Select an S3 bucket before listing objects');
+    }
+    return window.api.invoke('s3:list-objects', activeConnectionId, currentBucket, path);
+  }
+  throw new Error(`${activeProfile.type} browsing is not implemented yet`);
+}
+
 const initialState = {
   mode: 'connection' as const,
   activeConnectionId: null as string | null,
@@ -147,6 +171,8 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         await get().navigateTo(defaultPath);
       } else if (isMountableProfile(profile)) {
         await get().navigateTo(profile.defaultPath || profile.mountPath || '/');
+      } else if (profile.type === 'rsync') {
+        await get().navigateTo(profile.defaultPath || profile.module || '/');
       }
     } catch (err) {
       set({
@@ -205,11 +231,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
 
     set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
     try {
-      const listing = activeProfile.type === 'sftp'
-        ? await window.api.invoke('sftp:list', activeConnectionId, path)
-        : isMountableProfile(activeProfile)
-          ? await window.api.invoke('netfs:list', activeConnectionId, path)
-          : await window.api.invoke('s3:list-objects', activeConnectionId, currentBucket as string, path);
+      const listing = await listRemoteEntries(activeConnectionId, activeProfile, currentBucket, path);
       set({
         currentPath: path,
         entries: sortEntries(listing.entries, sortField, sortDirection),
@@ -227,7 +249,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
     const { currentPath, activeProfile, navigateTo } = get();
     if (!activeProfile) return;
 
-    if (activeProfile.type === 'sftp' || isMountableProfile(activeProfile)) {
+    if (activeProfile.type === 'sftp' || activeProfile.type === 'rsync' || isMountableProfile(activeProfile)) {
       if (currentPath === '/') return;
       const parent = getParentPath(currentPath);
       await navigateTo(parent);
@@ -241,7 +263,11 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   refresh: async () => {
     const { mode, currentPath, currentBucket, activeProfile, navigateTo, loadBuckets } = get();
     if (mode === 'taildrop') return;
-    if (activeProfile?.type === 'sftp' || (activeProfile && isMountableProfile(activeProfile))) {
+    if (
+      activeProfile?.type === 'sftp' ||
+      activeProfile?.type === 'rsync' ||
+      (activeProfile && isMountableProfile(activeProfile))
+    ) {
       await navigateTo(currentPath);
     } else if (currentBucket) {
       await navigateTo(currentPath);

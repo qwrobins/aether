@@ -4,6 +4,7 @@ import { TransferService } from '../services/transfer.service';
 import { FilesystemService } from '../services/filesystem.service';
 import { s3Service } from './s3.handlers';
 import { sftpService } from './sftp.handlers';
+import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 import type { TransferRequest, TransferItem } from '@shared/types/transfer';
@@ -93,11 +94,12 @@ async function validateTransferRequest(request: TransferRequest) {
   if (
     request.connectionType !== 's3' &&
     request.connectionType !== 'sftp' &&
+    request.connectionType !== 'rsync' &&
     request.connectionType !== 'taildrop' &&
     !MOUNTED_NETWORK_TYPES.has(request.connectionType)
   ) {
     throw new Error(
-      'Connection type must be s3, sftp, or taildrop; mounted smb, nfs, and webdav shares are also supported',
+      'Connection type must be s3, sftp, or taildrop; rsync and mounted smb, nfs, and webdav shares are also supported',
     );
   }
 
@@ -123,8 +125,16 @@ async function validateTransferRequest(request: TransferRequest) {
 
     if (request.connectionType === 'sftp') {
       sftpService.getClient(request.connectionId);
+    } else if (request.connectionType === 'rsync') {
+      rsyncService.getClient(request.connectionId);
     } else if (MOUNTED_NETWORK_TYPES.has(request.connectionType)) {
       await networkFilesystemService.list(request.connectionId);
+      const mountedPath = request.direction === 'upload'
+        ? request.destinationPath
+        : request.sourcePath;
+      await networkFilesystemService.assertTransferPath(request.connectionId, mountedPath, {
+        writable: request.direction === 'upload',
+      });
     }
     return { s3Client: undefined };
   } catch {
@@ -143,6 +153,9 @@ export function registerTransferHandlers(
   transferService.setWindow(mainWindow);
   transferService.setSftpClientFactory((connectionId: string) =>
     sftpService.createTransferClient(connectionId),
+  );
+  transferService.setRsyncClientFactory?.((connectionId: string) =>
+    rsyncService.createTransferClient(connectionId),
   );
 
   ipcMain.handle(
@@ -260,15 +273,16 @@ export function registerTransferHandlers(
               return items;
             }
             return [];
-          } else if (request.connectionType === 'sftp') {
-            const client = sftpService.getClient(request.connectionId);
+          } else if (request.connectionType === 'sftp' || request.connectionType === 'rsync') {
+            const service = request.connectionType === 'rsync' ? rsyncService : sftpService;
+            const client = service.getClient(request.connectionId);
             const stat = await client.stat(request.sourcePath);
             if (stat.isDirectory) {
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
               const destBase = getDownloadDestinationBase(request.destinationPath);
               try {
-                for await (const { path: remotePath, relativePath, size } of sftpService.walkFilesRecursive(
+                for await (const { path: remotePath, relativePath, size } of service.walkFilesRecursive(
                   request.connectionId,
                   request.sourcePath,
                   { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
@@ -289,7 +303,7 @@ export function registerTransferHandlers(
                 throw error;
               }
               if (items.length === 0) return [];
-              console.log(`[Aether] SFTP directory download expanded to ${items.length} file(s)`);
+              console.log(`[Aether] ${request.connectionType.toUpperCase()} directory download expanded to ${items.length} file(s)`);
               return items;
             }
           } else if (MOUNTED_NETWORK_TYPES.has(request.connectionType)) {

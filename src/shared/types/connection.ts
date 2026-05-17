@@ -78,7 +78,11 @@ export interface RsyncConnectionProfile extends BaseConnectionProfile {
   type: 'rsync';
   host: string;
   module?: string;
-  username?: string;
+  username: string;
+  authMethod: 'password' | 'key';
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
   defaultPath?: string;
   sshPort?: number;
 }
@@ -120,6 +124,10 @@ export type RedactedSftpConnectionProfile = Omit<
 
 export type RedactedMountableConnectionProfile = Omit<MountableConnectionProfile, 'password'>;
 export type RedactedFtpConnectionProfile = Omit<FtpConnectionProfile, 'password'>;
+export type RedactedRsyncConnectionProfile = Omit<
+  RsyncConnectionProfile,
+  'password' | 'passphrase'
+>;
 export type RedactedAzureBlobConnectionProfile = Omit<
   AzureBlobConnectionProfile,
   'accountKey' | 'sasToken'
@@ -131,7 +139,7 @@ export type RedactedConnectionProfile =
   | RedactedSftpConnectionProfile
   | RedactedMountableConnectionProfile
   | RedactedFtpConnectionProfile
-  | RsyncConnectionProfile
+  | RedactedRsyncConnectionProfile
   | RedactedAzureBlobConnectionProfile
   | RedactedGcsConnectionProfile;
 

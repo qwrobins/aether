@@ -8,6 +8,7 @@ import type {
   GcsConnectionProfile,
   MountableConnectionProfile,
   RedactedConnectionProfile,
+  RsyncConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
 } from '@shared/types/connection';
@@ -21,6 +22,7 @@ const SENSITIVE_FIELDS_S3: (keyof S3ConnectionProfile)[] = [
 const SENSITIVE_FIELDS_SFTP: (keyof SftpConnectionProfile)[] = ['password', 'passphrase'];
 const SENSITIVE_FIELDS_MOUNTABLE: (keyof MountableConnectionProfile)[] = ['password'];
 const SENSITIVE_FIELDS_FTP: (keyof FtpConnectionProfile)[] = ['password'];
+const SENSITIVE_FIELDS_RSYNC: (keyof RsyncConnectionProfile)[] = ['password', 'passphrase'];
 const SENSITIVE_FIELDS_AZURE_BLOB: (keyof AzureBlobConnectionProfile)[] = [
   'accountKey',
   'sasToken',
@@ -199,6 +201,9 @@ export class ConnectionService {
     }
     if (profile.type === 'ftp' || profile.type === 'ftps') {
       return SENSITIVE_FIELDS_FTP as string[];
+    }
+    if (profile.type === 'rsync') {
+      return SENSITIVE_FIELDS_RSYNC as string[];
     }
     if (profile.type === 'azure-blob') {
       return SENSITIVE_FIELDS_AZURE_BLOB as string[];

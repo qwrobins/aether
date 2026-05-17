@@ -70,8 +70,10 @@ export class TransferService {
   private abortControllers: Map<string, AbortController> = new Map();
   private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private sftpClients: Map<string, SftpTransferClient> = new Map();
+  private rsyncClients: Map<string, SftpTransferClient> = new Map();
   private terminalTransfers: Set<string> = new Set();
   private sftpClientFactory?: SftpClientFactory;
+  private rsyncClientFactory?: SftpClientFactory;
   private taildropSender?: TaildropSender;
   private window: BrowserWindow | null = null;
 
@@ -85,6 +87,10 @@ export class TransferService {
 
   setSftpClientFactory(factory: SftpClientFactory): void {
     this.sftpClientFactory = factory;
+  }
+
+  setRsyncClientFactory(factory: SftpClientFactory): void {
+    this.rsyncClientFactory = factory;
   }
 
   setTaildropSender(sender: TaildropSender): void {
@@ -162,6 +168,9 @@ export class TransferService {
       } else if (item.connectionType === 'sftp') {
         const sftpClient = await this.getOrCreateSftpTransferClient(item.id, item.connectionId);
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
+      } else if (item.connectionType === 'rsync') {
+        const rsyncClient = await this.getOrCreateRsyncTransferClient(item.id, item.connectionId);
+        await this.executeSftpTransfer(item, rsyncClient, signal, startTime);
       } else if (item.connectionType === 'taildrop') {
         await this.executeTaildropTransfer(item, signal, startTime);
       } else if (isMountedNetworkConnectionType(item.connectionType)) {
@@ -537,6 +546,9 @@ export class TransferService {
     item.completedAt = new Date().toISOString();
     item.speed = 0;
     await this.closeSftpTransferClient(item.id, 'abort');
+    if (this.rsyncClients.has(item.id)) {
+      await this.closeRsyncTransferClient(item.id, 'abort');
+    }
     await this.cleanupCancelledDownload(item);
     await this.cleanupTransferResources(item.id);
     this.emitComplete({
@@ -555,6 +567,9 @@ export class TransferService {
 
     this.abortControllers.delete(id);
     await this.closeSftpTransferClient(id, 'disconnect');
+    if (this.rsyncClients.has(id)) {
+      await this.closeRsyncTransferClient(id, 'disconnect');
+    }
   }
 
   private async cleanupCancelledDownload(item: TransferItem): Promise<void> {
@@ -629,6 +644,51 @@ export class TransferService {
       await close.call(client);
     } catch (error) {
       console.warn(`[Aether] Failed to ${mode} SFTP transfer ${id}:`, error);
+    }
+  }
+
+  private async getOrCreateRsyncTransferClient(
+    id: string,
+    connectionId: string,
+  ): Promise<SftpTransferClient> {
+    const existingClient = this.rsyncClients.get(id);
+    if (existingClient) {
+      return existingClient;
+    }
+
+    if (!this.rsyncClientFactory) {
+      throw new NonRetryableError('Rsync client is not connected');
+    }
+
+    const client = await this.rsyncClientFactory(connectionId);
+    this.rsyncClients.set(id, client);
+    return client;
+  }
+
+  private async closeRsyncTransferClient(
+    id: string,
+    mode: 'abort' | 'disconnect',
+  ): Promise<void> {
+    const client = this.rsyncClients.get(id);
+    if (!client) {
+      return;
+    }
+
+    this.rsyncClients.delete(id);
+
+    const close =
+      mode === 'abort'
+        ? client.abort ?? client.disconnect
+        : client.disconnect ?? client.abort;
+
+    if (!close) {
+      return;
+    }
+
+    try {
+      await close.call(client);
+    } catch (error) {
+      console.warn(`[Aether] Failed to ${mode} rsync transfer ${id}:`, error);
     }
   }
 

@@ -43,6 +43,18 @@ export function NetworkConnectionForm({ type, formData, onChange }: NetworkConne
     }
   }, [onChange]);
 
+  const browseForPrivateKey = useCallback(async () => {
+    const homePath = await window.api.invoke('fs:get-home');
+    const filePath = await window.api.invoke('dialog:open-file', {
+      title: 'Select SSH Private Key',
+      defaultPath: `${homePath}/.ssh`,
+      filters: [{ name: 'All Files', extensions: ['*'] }],
+    });
+    if (filePath) {
+      onChange('privateKeyPath', filePath);
+    }
+  }, [onChange]);
+
   if (type === 'azure-blob') {
     return (
       <div className="space-y-4">
@@ -106,6 +118,44 @@ export function NetworkConnectionForm({ type, formData, onChange }: NetworkConne
             <Input id="rsync-port" type="number" value={formData.sshPort ?? '22'} onChange={(e) => onChange('sshPort', e.target.value)} />
           </div>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="rsync-auth">Authentication</Label>
+          <div id="rsync-auth" className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={formData.authMethod === 'key' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => onChange('authMethod', 'key')}
+            >
+              SSH Key
+            </Button>
+            <Button
+              type="button"
+              variant={formData.authMethod === 'password' ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => onChange('authMethod', 'password')}
+            >
+              Password
+            </Button>
+          </div>
+        </div>
+        {formData.authMethod === 'key' ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="rsync-key-path">Private Key Path</Label>
+              <div className="flex gap-2">
+                <Input id="rsync-key-path" className="flex-1 font-mono text-[12px]" value={formData.privateKeyPath ?? ''} onChange={(e) => onChange('privateKeyPath', e.target.value)} />
+                <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={browseForPrivateKey}>
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Browse
+                </Button>
+              </div>
+            </div>
+            <SecretField id="rsync-passphrase" label="Passphrase" field="passphrase" value={formData.passphrase} onChange={onChange} />
+          </>
+        ) : (
+          <SecretField id="rsync-password" label="Password" field="password" value={formData.password} onChange={onChange} />
+        )}
         <PathField id="rsync-path" label="Default Path" field="defaultPath" value={formData.defaultPath} onChange={onChange} />
         <PathField id="rsync-module" label="Module" field="module" value={formData.module} onChange={onChange} />
       </div>
