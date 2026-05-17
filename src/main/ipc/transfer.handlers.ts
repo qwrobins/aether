@@ -4,6 +4,7 @@ import { TransferService } from '../services/transfer.service';
 import { FilesystemService } from '../services/filesystem.service';
 import { s3Service } from './s3.handlers';
 import { sftpService } from './sftp.handlers';
+import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 import type { TransferRequest, TransferItem } from '@shared/types/transfer';
 
@@ -11,6 +12,7 @@ const transferService = new TransferService();
 const fs = new FilesystemService();
 const WINDOWS_ROOT_PATTERN = /^[A-Za-z]:[\\/]?$/;
 const MAX_RECURSIVE_TRANSFER_FILES = 10000;
+const MOUNTED_NETWORK_TYPES = new Set(['smb', 'nfs', 'webdav']);
 
 function isWindowsRootPath(filePath: string): boolean {
   return WINDOWS_ROOT_PATTERN.test(filePath);
@@ -91,9 +93,12 @@ async function validateTransferRequest(request: TransferRequest) {
   if (
     request.connectionType !== 's3' &&
     request.connectionType !== 'sftp' &&
-    request.connectionType !== 'taildrop'
+    request.connectionType !== 'taildrop' &&
+    !MOUNTED_NETWORK_TYPES.has(request.connectionType)
   ) {
-    throw new Error('Connection type must be s3, sftp, or taildrop');
+    throw new Error(
+      'Connection type must be s3, sftp, or taildrop; mounted smb, nfs, and webdav shares are also supported',
+    );
   }
 
   if (request.isDirectory !== undefined && typeof request.isDirectory !== 'boolean') {
@@ -116,7 +121,11 @@ async function validateTransferRequest(request: TransferRequest) {
       return { s3Client: s3Service.getClient(request.connectionId) };
     }
 
-    sftpService.getClient(request.connectionId);
+    if (request.connectionType === 'sftp') {
+      sftpService.getClient(request.connectionId);
+    } else if (MOUNTED_NETWORK_TYPES.has(request.connectionType)) {
+      await networkFilesystemService.list(request.connectionId);
+    }
     return { s3Client: undefined };
   } catch {
     throw new Error('Connection not found');
@@ -281,6 +290,37 @@ export function registerTransferHandlers(
               }
               if (items.length === 0) return [];
               console.log(`[Aether] SFTP directory download expanded to ${items.length} file(s)`);
+              return items;
+            }
+          } else if (MOUNTED_NETWORK_TYPES.has(request.connectionType)) {
+            const sourceStat = await fs.stat(request.sourcePath);
+            if (sourceStat.isDirectory) {
+              const items: TransferItem[] = [];
+              const transferIds: string[] = [];
+              const destBase = getDownloadDestinationBase(request.destinationPath);
+              try {
+                for await (const { path: sourcePath, relativePath } of fs.walkFilesRecursive(
+                  request.sourcePath,
+                  { maxFiles: MAX_RECURSIVE_TRANSFER_FILES },
+                )) {
+                  if (relativePath.trim() === '') continue;
+                  const subDest = safeJoinDownloadDestination(destBase, relativePath);
+                  const subRequest: TransferRequest = {
+                    ...request,
+                    sourcePath,
+                    destinationPath: subDest,
+                    isDirectory: false,
+                  };
+                  const sourceFileStat = await fs.stat(sourcePath);
+                  const transfer = await enqueueTransferItem(subRequest, transferIds, sourceFileStat.size);
+                  items.push(transfer);
+                }
+              } catch (error) {
+                rollbackQueuedTransfers(transferIds);
+                throw error;
+              }
+              if (items.length === 0) return [];
+              console.log(`[Aether] Network filesystem directory download expanded to ${items.length} file(s)`);
               return items;
             }
           }

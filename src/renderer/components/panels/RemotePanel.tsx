@@ -14,7 +14,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CloudOff, Database, ChevronLeft } from 'lucide-react';
 import type { FileEntry } from '@shared/types/filesystem';
+import type { ConnectionProfile } from '@shared/types/connection';
 import type { TransferRequest } from '@shared/types/transfer';
+
+function isMountableProfile(profile: ConnectionProfile): boolean {
+  return profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav';
+}
 
 function BucketList() {
   const { buckets, isLoading, error, selectBucket } = useRemotePanelStore();
@@ -124,7 +129,7 @@ export function RemotePanel() {
           if (payload.panelType !== 'local') return;
 
           for (const entry of payload.entries) {
-            const destPath = activeProfile.type === 'sftp'
+            const destPath = activeProfile.type === 'sftp' || isMountableProfile(activeProfile)
               ? `${currentPath.replace(/\/+$/, '')}/${entry.name}`
               : `${currentPath}${entry.name}`;
 
@@ -175,7 +180,7 @@ export function RemotePanel() {
           const filePath = (file as File & { path?: string }).path;
           if (!filePath) continue;
 
-          const destPath = activeProfile.type === 'sftp'
+          const destPath = activeProfile.type === 'sftp' || isMountableProfile(activeProfile)
             ? `${currentPath.replace(/\/+$/, '')}/${file.name}`
             : `${currentPath}${file.name}`;
 
@@ -250,6 +255,14 @@ export function RemotePanel() {
             console.error('[Aether] SFTP delete failed:', err);
             toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
           });
+      } else if (isMountableProfile(activeProfile)) {
+        window.api
+          .invoke('netfs:delete', activeConnectionId, paths)
+          .then(() => refresh())
+          .catch((err) => {
+            console.error('[Aether] Network filesystem delete failed:', err);
+            toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
       }
     },
     [activeConnectionId, activeProfile, currentBucket, refresh]
@@ -270,6 +283,11 @@ export function RemotePanel() {
         const newPath = oldPath.replace(/[^/]+$/, newName);
         window.api
           .invoke('sftp:rename', activeConnectionId, oldPath, newPath)
+          .then(() => refresh());
+      } else if (isMountableProfile(activeProfile)) {
+        const newPath = oldPath.replace(/[^/]+$/, newName);
+        window.api
+          .invoke('netfs:rename', activeConnectionId, oldPath, newPath)
           .then(() => refresh());
       }
       // S3 doesn't support rename natively
@@ -294,6 +312,11 @@ export function RemotePanel() {
       const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
       window.api
         .invoke('sftp:mkdir', activeConnectionId, newPath)
+        .then(() => refresh());
+    } else if (isMountableProfile(activeProfile)) {
+      const newPath = `${currentPath.replace(/\/+$/, '')}/${name}`;
+      window.api
+        .invoke('netfs:mkdir', activeConnectionId, newPath)
         .then(() => refresh());
     }
   }, [activeConnectionId, activeProfile, currentBucket, currentPath, refresh]);
@@ -378,7 +401,7 @@ export function RemotePanel() {
   }
 
   // State 2: SFTP connected — direct file browsing (no bucket selection)
-  if (activeProfile?.type === 'sftp') {
+  if (activeProfile && (activeProfile.type === 'sftp' || isMountableProfile(activeProfile))) {
     return (
       <div
         data-panel="remote"
@@ -390,7 +413,7 @@ export function RemotePanel() {
         <DropZone isActive={isDragOver} direction="upload" />
 
         <PanelHeader
-          label={`SFTP: ${activeProfile.name}`}
+          label={`${activeProfile.type.toUpperCase()}: ${activeProfile.name}`}
           path={currentPath}
           isActive={true}
           viewMode={viewMode}
@@ -422,6 +445,29 @@ export function RemotePanel() {
           onNewFolder={handleNewFolder}
           onTransfer={handleTransfer}
         />
+      </div>
+    );
+  }
+
+  if (activeProfile && activeProfile.type !== 's3') {
+    return (
+      <div data-panel="remote" className="flex min-h-0 h-full flex-col overflow-hidden">
+        <PanelHeader
+          label={`${activeProfile.type.toUpperCase()}: ${activeProfile.name}`}
+          path=""
+          isActive={true}
+          viewMode={viewMode}
+          onNavigate={() => void 0}
+          onRefresh={() => void 0}
+          onViewModeChange={setViewMode}
+        />
+        <div className="flex flex-1 items-center justify-center">
+          <EmptyState
+            icon={CloudOff}
+            title="Browsing not wired yet"
+            subtitle="This connection type can be saved now; file browsing will be added in a protocol-specific pass."
+          />
+        </div>
       </div>
     );
   }

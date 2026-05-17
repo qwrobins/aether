@@ -39,6 +39,12 @@ export interface IpcInvokeMap {
   'sftp:delete': { args: [connectionId: string, paths: string[]]; return: SftpDeleteResult };
   'sftp:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
 
+  // Mounted network filesystems
+  'netfs:list': { args: [connectionId: string, path?: string]; return: DirectoryListing };
+  'netfs:mkdir': { args: [connectionId: string, path: string]; return: void };
+  'netfs:delete': { args: [connectionId: string, paths: string[]]; return: void };
+  'netfs:rename': { args: [connectionId: string, oldPath: string, newPath: string]; return: void };
+
   // Taildrop / Tailscale
   'taildrop:status': { args: []; return: TaildropAvailability };
   'taildrop:list-targets': { args: []; return: TaildropTarget[] };

@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { readStore, writeStore } from '../utils/store';
 import { CredentialService } from './credential.service';
 import type {
+  AzureBlobConnectionProfile,
   ConnectionProfile,
+  FtpConnectionProfile,
+  GcsConnectionProfile,
+  MountableConnectionProfile,
   RedactedConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
@@ -15,6 +19,13 @@ const SENSITIVE_FIELDS_S3: (keyof S3ConnectionProfile)[] = [
   'sourceSecretAccessKey',
 ];
 const SENSITIVE_FIELDS_SFTP: (keyof SftpConnectionProfile)[] = ['password', 'passphrase'];
+const SENSITIVE_FIELDS_MOUNTABLE: (keyof MountableConnectionProfile)[] = ['password'];
+const SENSITIVE_FIELDS_FTP: (keyof FtpConnectionProfile)[] = ['password'];
+const SENSITIVE_FIELDS_AZURE_BLOB: (keyof AzureBlobConnectionProfile)[] = [
+  'accountKey',
+  'sasToken',
+];
+const SENSITIVE_FIELDS_GCS: (keyof GcsConnectionProfile)[] = ['serviceAccountKeyPath'];
 type DecryptedProfileResult = {
   profile: ConnectionProfile;
   decryptedFields: Set<string>;
@@ -180,6 +191,21 @@ export class ConnectionService {
     if (profile.type === 's3') {
       return SENSITIVE_FIELDS_S3 as string[];
     }
-    return SENSITIVE_FIELDS_SFTP as string[];
+    if (profile.type === 'sftp') {
+      return SENSITIVE_FIELDS_SFTP as string[];
+    }
+    if (profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav') {
+      return SENSITIVE_FIELDS_MOUNTABLE as string[];
+    }
+    if (profile.type === 'ftp' || profile.type === 'ftps') {
+      return SENSITIVE_FIELDS_FTP as string[];
+    }
+    if (profile.type === 'azure-blob') {
+      return SENSITIVE_FIELDS_AZURE_BLOB as string[];
+    }
+    if (profile.type === 'gcs') {
+      return SENSITIVE_FIELDS_GCS as string[];
+    }
+    return [];
   }
 }

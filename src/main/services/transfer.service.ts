@@ -2,6 +2,8 @@ import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
 import { stat, mkdir, unlink, rename } from 'node:fs/promises';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
@@ -37,6 +39,10 @@ function getRequiredBucket(item: TransferItem): string {
     throw new NonRetryableError('Bucket is required for S3 transfers');
   }
   return item.bucket;
+}
+
+function isMountedNetworkConnectionType(type: TransferItem['connectionType']): boolean {
+  return type === 'smb' || type === 'nfs' || type === 'webdav';
 }
 
 function waitForDrain(writeStream: WriteStream): Promise<void> {
@@ -158,6 +164,10 @@ export class TransferService {
         await this.executeSftpTransfer(item, sftpClient, signal, startTime);
       } else if (item.connectionType === 'taildrop') {
         await this.executeTaildropTransfer(item, signal, startTime);
+      } else if (isMountedNetworkConnectionType(item.connectionType)) {
+        await this.executeLocalFilesystemTransfer(item, signal, startTime);
+      } else {
+        throw new NonRetryableError(`${item.connectionType} transfers are not implemented yet`);
       }
 
       if (signal?.aborted) {
@@ -384,6 +394,68 @@ export class TransferService {
     const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
     item.speed = elapsed > 0 && item.size > 0 ? item.size / elapsed : 0;
     this.emitProgress(item.id, item.size, item.size, item.speed);
+  }
+
+  private async executeLocalFilesystemTransfer(
+    item: TransferItem,
+    signal?: AbortSignal,
+    startTime?: number,
+  ): Promise<void> {
+    const sourceStat = await stat(item.sourcePath);
+    if (sourceStat.isDirectory()) {
+      throw new NonRetryableError('Directory transfer should be expanded before queueing');
+    }
+    item.size = sourceStat.size;
+    const destDir = path.dirname(item.destinationPath);
+    if (destDir && destDir !== '.' && destDir !== '/') {
+      await mkdir(destDir, { recursive: true });
+    }
+
+    await this.copyFileWithProgress(item, item.sourcePath, this.getDownloadPath(item), signal, startTime);
+    if (signal?.aborted) throw new Error('Aborted');
+    await this.finalizeDownload(item);
+  }
+
+  private async copyFileWithProgress(
+    item: TransferItem,
+    sourcePath: string,
+    destinationPath: string,
+    signal?: AbortSignal,
+    startTime?: number,
+  ): Promise<void> {
+    if (signal?.aborted) {
+      throw new Error('Aborted');
+    }
+
+    const readStream = createReadStream(sourcePath);
+    const progressStream = new Transform({
+      transform: (chunk: Buffer, _encoding, callback) => {
+        if (signal?.aborted) {
+          callback(new Error('Aborted'));
+          return;
+        }
+        const copied = item.bytesTransferred + chunk.length;
+        item.bytesTransferred = copied;
+        const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
+        item.speed = elapsed > 0 ? copied / elapsed : 0;
+        this.emitProgress(item.id, copied, item.size, item.speed);
+        callback(null, chunk);
+      },
+    });
+    const writeStream = createWriteStream(destinationPath);
+
+    const abort = () => {
+      readStream.destroy(new Error('Aborted'));
+      progressStream.destroy(new Error('Aborted'));
+      writeStream.destroy(new Error('Aborted'));
+    };
+
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      await pipeline(readStream, progressStream, writeStream);
+    } finally {
+      signal?.removeEventListener('abort', abort);
+    }
   }
 
   cancel(id: string): void {

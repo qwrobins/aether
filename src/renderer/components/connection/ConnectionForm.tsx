@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { SftpConnectionForm } from './SftpConnectionForm';
+import { NetworkConnectionForm } from './NetworkConnectionForm';
 import type { ConnectionProfile, ConnectionType } from '@shared/types/connection';
 
 interface ConnectionFormProps {
@@ -40,6 +41,63 @@ const SFTP_DEFAULTS: Record<string, string> = {
   defaultPath: '',
 };
 
+const NETWORK_DEFAULTS: Record<string, string> = {
+  name: '',
+  host: '',
+  share: '',
+  mountPath: '',
+  username: '',
+  password: '',
+  domain: '',
+  defaultPath: '',
+  port: '',
+  sshPort: '22',
+  module: '',
+  accountName: '',
+  accountKey: '',
+  sasToken: '',
+  endpoint: '',
+  container: '',
+  projectId: '',
+  bucket: '',
+  serviceAccountKeyPath: '',
+};
+
+const CONNECTION_TYPES: ConnectionType[] = [
+  's3',
+  'sftp',
+  'smb',
+  'nfs',
+  'webdav',
+  'ftp',
+  'ftps',
+  'rsync',
+  'azure-blob',
+  'gcs',
+];
+
+const CONNECTION_LABELS: Record<ConnectionType, string> = {
+  s3: 'S3',
+  sftp: 'SFTP',
+  smb: 'SMB',
+  nfs: 'NFS',
+  webdav: 'WebDAV',
+  ftp: 'FTP',
+  ftps: 'FTPS',
+  rsync: 'Rsync',
+  'azure-blob': 'Azure',
+  gcs: 'GCS',
+};
+
+function defaultsForType(type: ConnectionType): Record<string, string> {
+  if (type === 's3') return { ...S3_DEFAULTS };
+  if (type === 'sftp') return { ...SFTP_DEFAULTS };
+  return {
+    ...NETWORK_DEFAULTS,
+    port: type === 'ftps' ? '990' : type === 'ftp' ? '21' : '',
+  };
+}
+
 function profileToFormData(profile: ConnectionProfile): Record<string, string> {
   if (profile.type === 's3') {
     return {
@@ -58,15 +116,10 @@ function profileToFormData(profile: ConnectionProfile): Record<string, string> {
     };
   }
   return {
-    name: profile.name,
-    host: profile.host,
-    port: String(profile.port),
-    username: profile.username,
-    authMethod: profile.authMethod,
-    password: profile.password ?? '',
-    privateKeyPath: profile.privateKeyPath ?? '',
-    passphrase: profile.passphrase ?? '',
-    defaultPath: profile.defaultPath ?? '',
+    ...defaultsForType(profile.type),
+    ...Object.fromEntries(
+      Object.entries(profile).map(([key, value]) => [key, value === undefined ? '' : String(value)]),
+    ),
   };
 }
 
@@ -87,7 +140,7 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
       setActiveTab(newType);
       // Reset form when switching tabs (unless editing existing profile)
       if (!initialProfile) {
-        setFormData(newType === 's3' ? { ...S3_DEFAULTS } : { ...SFTP_DEFAULTS });
+        setFormData(defaultsForType(newType));
       }
       setTestStatus('idle');
     },
@@ -118,6 +171,18 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
     if (activeTab === 'sftp') {
       return Boolean(formData.host && formData.username);
     }
+    if (activeTab === 'smb' || activeTab === 'nfs' || activeTab === 'webdav') {
+      return Boolean(formData.host && formData.share && formData.mountPath);
+    }
+    if (activeTab === 'ftp' || activeTab === 'ftps' || activeTab === 'rsync') {
+      return Boolean(formData.host && formData.username);
+    }
+    if (activeTab === 'azure-blob') {
+      return Boolean(formData.accountName && (formData.accountKey || formData.sasToken));
+    }
+    if (activeTab === 'gcs') {
+      return Boolean(formData.serviceAccountKeyPath && (formData.projectId || formData.bucket));
+    }
     // S3 validation depends on auth method
     const authMethod = formData.authMethod || 'credentials';
     if (authMethod === 'credentials') return Boolean(formData.accessKeyId && formData.secretAccessKey);
@@ -135,9 +200,12 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
       >
         {/* Only show tabs when creating new connection */}
         {!initialProfile && (
-          <TabsList className="w-full">
-            <TabsTrigger value="s3" className="flex-1">S3</TabsTrigger>
-            <TabsTrigger value="sftp" className="flex-1">SFTP</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-5 gap-1 p-1">
+            {CONNECTION_TYPES.map((type) => (
+              <TabsTrigger key={type} value={type} className="px-2 text-[11px]">
+                {CONNECTION_LABELS[type]}
+              </TabsTrigger>
+            ))}
           </TabsList>
         )}
 
@@ -148,6 +216,11 @@ export function ConnectionForm({ initialProfile, onSave, onCancel, onTest }: Con
           <TabsContent value="sftp">
             <SftpConnectionForm formData={formData} onChange={handleChange} />
           </TabsContent>
+          {CONNECTION_TYPES.filter((type) => type !== 's3' && type !== 'sftp').map((type) => (
+            <TabsContent key={type} value={type}>
+              <NetworkConnectionForm type={type} formData={formData} onChange={handleChange} />
+            </TabsContent>
+          ))}
         </div>
       </Tabs>
 
