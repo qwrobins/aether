@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.21](https://github.com/qwrobins/aether/compare/v0.1.20...v0.1.21) (2026-05-17)
+
+### Miscellaneous
+
+* Add network protocol connection support ([#42](https://github.com/qwrobins/aether/pull/42))
+  * Add first-class connection profile support for SMB, NFS, WebDAV, FTP/FTPS, rsync, Azure Blob, and GCS alongside S3/SFTP
+  * Wire mounted SMB/NFS/WebDAV shares through typed netfs IPC for browsing, folder creation, rename/delete, and local-path transfers
+  * Add protocol-specific connection forms, credential redaction, stricter validation, and bump version to 0.1.21
+
 ## [0.1.20](https://github.com/qwrobins/aether/compare/v0.1.18...v0.1.20) (2026-05-17)
 
 ### Automation
