@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.22](https://github.com/qwrobins/aether/compare/v0.1.21...v0.1.22) (2026-05-17)
+
+### Bug Fixes
+
+* Fix new connection form spacing
+  * add horizontal inset to the connection form fields and footer actions
+  * keep the form content scrollable within the connection sheet
+  * document the network connection options added in 0.1.21
+  * show the app version at the bottom of the settings panel
+  * bump Aether to 0.1.22
+
 ## [0.1.21](https://github.com/qwrobins/aether/compare/v0.1.20...v0.1.21) (2026-05-17)
 
 ### Miscellaneous
