@@ -1,4 +1,4 @@
-import { IpcMain, BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import path from 'node:path';
 import { TransferService } from '../services/transfer.service';
 import { FilesystemService } from '../services/filesystem.service';
@@ -8,6 +8,7 @@ import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
 import type { TransferRequest, TransferItem } from '@shared/types/transfer';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 const transferService = new TransferService();
 const fs = new FilesystemService();
@@ -147,7 +148,7 @@ export function getTransferService(): TransferService {
 }
 
 export function registerTransferHandlers(
-  ipcMain: IpcMain,
+  ipcMain: IpcMainHandle,
   mainWindow: BrowserWindow,
 ): void {
   transferService.setWindow(mainWindow);

@@ -1,4 +1,3 @@
-import { IpcMain } from 'electron';
 import { S3Service } from '../services/s3.service';
 import { ConnectionService } from '../services/connection.service';
 import { sftpService } from './sftp.handlers';
@@ -7,15 +6,31 @@ import { networkFilesystemService } from './network-filesystem.handlers';
 import { UntrustedSshHostKeyError } from '../services/sftp.service';
 import { IpcChannels } from '@shared/constants/channels';
 import type {
+  ConnectionConnectResult,
   MountableConnectionProfile,
   RsyncConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
 } from '@shared/types/connection';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 export const s3Service = new S3Service();
 
-export function registerS3Handlers(ipcMain: IpcMain): void {
+async function connectWithHostKeyHandling(
+  connect: () => Promise<void>,
+): Promise<ConnectionConnectResult> {
+  try {
+    await connect();
+    return { status: 'connected' };
+  } catch (error) {
+    if (error instanceof UntrustedSshHostKeyError) {
+      return { status: 'host-key-untrusted', fingerprint: error.fingerprint };
+    }
+    throw error;
+  }
+}
+
+export function registerS3Handlers(ipcMain: IpcMainHandle): void {
   const connections = new ConnectionService();
 
   ipcMain.handle(IpcChannels.CONN_CONNECT, async (_event, id: string) => {
@@ -25,25 +40,13 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
       s3Service.connect(id, profile as S3ConnectionProfile);
       return { status: 'connected' };
     } else if (profile.type === 'sftp') {
-      try {
-        await sftpService.connect(id, profile as SftpConnectionProfile);
-        return { status: 'connected' };
-      } catch (error) {
-        if (error instanceof UntrustedSshHostKeyError) {
-          return { status: 'host-key-untrusted', fingerprint: error.fingerprint };
-        }
-        throw error;
-      }
+      return connectWithHostKeyHandling(() =>
+        sftpService.connect(id, profile as SftpConnectionProfile),
+      );
     } else if (profile.type === 'rsync') {
-      try {
-        await rsyncService.connect(id, profile as RsyncConnectionProfile);
-        return { status: 'connected' };
-      } catch (error) {
-        if (error instanceof UntrustedSshHostKeyError) {
-          return { status: 'host-key-untrusted', fingerprint: error.fingerprint };
-        }
-        throw error;
-      }
+      return connectWithHostKeyHandling(() =>
+        rsyncService.connect(id, profile as RsyncConnectionProfile),
+      );
     } else if (profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav') {
       await networkFilesystemService.connect(id, profile as MountableConnectionProfile);
       return { status: 'connected' };

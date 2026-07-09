@@ -13,6 +13,7 @@ import { registerNetworkFilesystemHandlers } from './network-filesystem.handlers
 import { registerTransferHandlers } from './transfer.handlers';
 import { registerTaildropHandlers } from './taildrop.handlers';
 import { IpcChannels } from '@shared/constants/channels';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 type NavigationValidator = (url: string) => boolean;
 
@@ -36,7 +37,7 @@ function createTrustedIpcMain(
   target: IpcMain,
   mainWindow: BrowserWindow,
   isAllowedNavigation: NavigationValidator,
-): IpcMain {
+): IpcMainHandle {
   return {
     handle(channel, listener) {
       target.handle(channel, (event, ...args) => {
@@ -44,7 +45,7 @@ function createTrustedIpcMain(
         return listener(event, ...args);
       });
     },
-  } as IpcMain;
+  };
 }
 
 export function registerAllIpcHandlers(

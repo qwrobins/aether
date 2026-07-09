@@ -281,6 +281,21 @@ describe('SftpService', () => {
     expect(service.getClient('conn-1')).toBe(mockClients[0]);
   });
 
+  it('rejects a mismatched configured host key fingerprint', async () => {
+    const keyHash = 'ef'.repeat(32);
+    connectImplementation = async (config) => {
+      const hostVerifier = config.hostVerifier as (hash: string) => boolean;
+      expect(hostVerifier(keyHash)).toBe(false);
+      throw new Error('Host denied');
+    };
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await expect(
+      service.connect('conn-1', profile({ hostKeyFingerprint: 'SHA256:not-matching' })),
+    ).rejects.toThrow(/SSH host key mismatch/);
+  });
+
   it('closes an existing client before reconnecting the same profile', async () => {
     const { SftpService } = await import('../sftp.service');
     const service = new SftpService();

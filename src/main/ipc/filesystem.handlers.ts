@@ -1,9 +1,10 @@
-import { type IpcMain, type OpenDialogOptions, dialog, shell, BrowserWindow } from 'electron';
+import { type OpenDialogOptions, dialog, shell, BrowserWindow } from 'electron';
 import { platform } from 'node:os';
 import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
+import type { IpcMainHandle } from './ipc-main-handle';
 
-export function registerFilesystemHandlers(ipcMain: IpcMain): void {
+export function registerFilesystemHandlers(ipcMain: IpcMainHandle): void {
   const fs = new FilesystemService();
 
   ipcMain.handle(IpcChannels.FS_READ_DIR, async (_event, path: string) => {

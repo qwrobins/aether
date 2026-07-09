@@ -1,10 +1,10 @@
-import { IpcMain } from 'electron';
 import { RsyncService } from '../services/rsync.service';
 import { IpcChannels } from '@shared/constants/channels';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 export const rsyncService = new RsyncService();
 
-export function registerRsyncHandlers(ipcMain: IpcMain): void {
+export function registerRsyncHandlers(ipcMain: IpcMainHandle): void {
   ipcMain.handle(IpcChannels.RSYNC_LIST, async (_event, connectionId: string, path: string) => {
     return rsyncService.list(connectionId, path);
   });

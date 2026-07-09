@@ -1,8 +1,8 @@
-import { IpcMain } from 'electron';
 import { ConnectionService } from '../services/connection.service';
 import { IpcChannels } from '@shared/constants/channels';
+import type { IpcMainHandle } from './ipc-main-handle';
 
-export function registerConnectionHandlers(ipcMain: IpcMain): void {
+export function registerConnectionHandlers(ipcMain: IpcMainHandle): void {
   const service = new ConnectionService();
 
   ipcMain.handle(IpcChannels.CONN_LIST, async () => {

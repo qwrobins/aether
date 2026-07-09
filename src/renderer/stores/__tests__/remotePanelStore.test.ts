@@ -50,6 +50,7 @@ function sftpProfile(overrides: Partial<SftpConnectionProfile> = {}): SftpConnec
 
 function resetStore(): void {
   useRemotePanelStore.setState({
+    mode: 'connection',
     activeConnectionId: null,
     activeProfile: null,
     connectionStatus: 'disconnected',
@@ -161,6 +162,59 @@ describe('useRemotePanelStore', () => {
     expect(useRemotePanelStore.getState().activeProfile).toEqual(
       expect.objectContaining({ hostKeyFingerprint: 'SHA256:trusted' }),
     );
+  });
+
+  it('rejects a first-use SSH host key without persisting it', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    mockInvoke(async (channel) => {
+      if (channel === 'conn:connect') {
+        return { status: 'host-key-untrusted', fingerprint: 'SHA256:untrusted' };
+      }
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    await useRemotePanelStore.getState().connect(sftpProfile());
+
+    expect(window.api.invoke).not.toHaveBeenCalledWith('conn:save', expect.anything());
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      connectionStatus: 'error',
+      connectionError: 'SSH host key was not trusted',
+      activeConnectionId: null,
+    });
+  });
+
+  it('disconnects a completed connection after the active view changes', async () => {
+    let resolveConnect: ((result: { status: 'connected' }) => void) | undefined;
+    const events: string[] = [];
+    mockInvoke(async (channel) => {
+      if (channel === 'conn:connect') {
+        events.push('connect-started');
+        return new Promise<{ status: 'connected' }>((resolve) => {
+          resolveConnect = resolve;
+        }).then((result) => {
+          events.push('connect-completed');
+          return result;
+        });
+      }
+      if (channel === 'conn:disconnect') {
+        events.push('disconnect');
+        return undefined;
+      }
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    const connect = useRemotePanelStore.getState().connect(sftpProfile());
+    useRemotePanelStore.getState().activateTaildrop();
+    resolveConnect?.({ status: 'connected' });
+    await connect;
+
+    expect(window.api.invoke).toHaveBeenCalledWith('conn:disconnect', 'sftp-1');
+    expect(events).toEqual(['connect-started', 'connect-completed', 'disconnect']);
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      mode: 'taildrop',
+      connectionStatus: 'connected',
+      activeConnectionId: null,
+    });
   });
 
   it('refreshes bucket list when connected to S3 without a selected bucket', async () => {
