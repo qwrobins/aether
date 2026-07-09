@@ -4,6 +4,7 @@ import { ConnectionService } from '../services/connection.service';
 import { sftpService } from './sftp.handlers';
 import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
+import { UntrustedSshHostKeyError } from '../services/sftp.service';
 import { IpcChannels } from '@shared/constants/channels';
 import type {
   MountableConnectionProfile,
@@ -24,11 +25,25 @@ export function registerS3Handlers(ipcMain: IpcMain): void {
       s3Service.connect(id, profile as S3ConnectionProfile);
       return { status: 'connected' };
     } else if (profile.type === 'sftp') {
-      await sftpService.connect(id, profile as SftpConnectionProfile);
-      return { status: 'connected' };
+      try {
+        await sftpService.connect(id, profile as SftpConnectionProfile);
+        return { status: 'connected' };
+      } catch (error) {
+        if (error instanceof UntrustedSshHostKeyError) {
+          return { status: 'host-key-untrusted', fingerprint: error.fingerprint };
+        }
+        throw error;
+      }
     } else if (profile.type === 'rsync') {
-      await rsyncService.connect(id, profile as RsyncConnectionProfile);
-      return { status: 'connected' };
+      try {
+        await rsyncService.connect(id, profile as RsyncConnectionProfile);
+        return { status: 'connected' };
+      } catch (error) {
+        if (error instanceof UntrustedSshHostKeyError) {
+          return { status: 'host-key-untrusted', fingerprint: error.fingerprint };
+        }
+        throw error;
+      }
     } else if (profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav') {
       await networkFilesystemService.connect(id, profile as MountableConnectionProfile);
       return { status: 'connected' };

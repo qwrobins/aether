@@ -35,6 +35,7 @@ export class S3Service {
   private regions: Map<string, string> = new Map();
 
   connect(connectionId: string, profile: S3ConnectionProfile): void {
+    this.disconnect(connectionId);
     const baseConfig: S3ClientConfig = {
       region: profile.region,
       followRegionRedirects: true,

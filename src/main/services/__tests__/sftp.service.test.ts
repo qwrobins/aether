@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SftpConnectionProfile } from '@shared/types/connection';
 
 const readFile = vi.fn();
+let connectImplementation:
+  | ((config: Record<string, unknown>) => Promise<void>)
+  | undefined;
 
 function createMockClient() {
   return {
-    connect: vi.fn(),
+    connect: vi.fn((config: Record<string, unknown>) => connectImplementation?.(config)),
     end: vi.fn(),
     list: vi.fn(),
     mkdir: vi.fn(),
@@ -55,6 +58,7 @@ describe('SftpService', () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     mockClients.length = 0;
+    connectImplementation = undefined;
   });
 
   it('connects with password auth', async () => {
@@ -63,12 +67,14 @@ describe('SftpService', () => {
 
     await service.connect('conn-1', profile());
 
-    expect(mockClients[0]?.connect).toHaveBeenCalledWith({
+    expect(mockClients[0]?.connect).toHaveBeenCalledWith(expect.objectContaining({
       host: 'example.com',
       port: 22,
       username: 'deploy',
       password: 'secret',
-    });
+      hostHash: 'sha256',
+      hostVerifier: expect.any(Function),
+    }));
     expect(service.getClient('conn-1')).toBe(mockClients[0]);
   });
 
@@ -240,6 +246,66 @@ describe('SftpService', () => {
 
     expect(mockClients[0]?.end).toHaveBeenCalled();
     expect(() => service.getClient('conn-1')).toThrow('Not connected');
+  });
+
+  it('rejects an untrusted host key before authentication', async () => {
+    const keyHash = 'ab'.repeat(32);
+    connectImplementation = async (config) => {
+      const hostVerifier = config.hostVerifier as (hash: string) => boolean;
+      expect(hostVerifier(keyHash)).toBe(false);
+      throw new Error('Host denied');
+    };
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await expect(service.connect('conn-1', profile())).rejects.toEqual(
+      expect.objectContaining({
+        name: 'UntrustedSshHostKeyError',
+        fingerprint: `SHA256:${Buffer.from(keyHash, 'hex').toString('base64').replace(/=+$/, '')}`,
+      }),
+    );
+  });
+
+  it('accepts only the configured host key fingerprint', async () => {
+    const keyHash = 'cd'.repeat(32);
+    const fingerprint = `SHA256:${Buffer.from(keyHash, 'hex').toString('base64').replace(/=+$/, '')}`;
+    connectImplementation = async (config) => {
+      const hostVerifier = config.hostVerifier as (hash: string) => boolean;
+      expect(hostVerifier(keyHash)).toBe(true);
+    };
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await service.connect('conn-1', profile({ hostKeyFingerprint: fingerprint }));
+
+    expect(service.getClient('conn-1')).toBe(mockClients[0]);
+  });
+
+  it('closes an existing client before reconnecting the same profile', async () => {
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+
+    await service.connect('conn-1', profile());
+
+    expect(mockClients[0]?.end).toHaveBeenCalledTimes(1);
+    expect(service.getClient('conn-1')).toBe(mockClients[1]);
+  });
+
+  it('continues reconnecting when the old client fails to close', async () => {
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+    await service.connect('conn-1', profile());
+    mockClients[0].end.mockRejectedValueOnce(new Error('close failed'));
+
+    await service.connect('conn-1', profile());
+
+    expect(service.getClient('conn-1')).toBe(mockClients[1]);
+    expect(consoleWarn).toHaveBeenCalledWith(
+      '[Aether] Failed to close SFTP connection conn-1:',
+      expect.any(Error),
+    );
   });
 
   it('creates dedicated transfer clients that can be aborted independently', async () => {

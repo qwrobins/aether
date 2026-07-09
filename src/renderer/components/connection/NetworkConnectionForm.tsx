@@ -170,6 +170,13 @@ export function NetworkConnectionForm({ type, formData, onChange }: NetworkConne
         )}
         <PathField id="rsync-path" label="Default Path" field="defaultPath" value={formData.defaultPath} onChange={onChange} />
         <PathField id="rsync-module" label="Module" field="module" value={formData.module} onChange={onChange} />
+        <PathField
+          id="rsync-host-key"
+          label="SSH Host Key Fingerprint"
+          field="hostKeyFingerprint"
+          value={formData.hostKeyFingerprint}
+          onChange={onChange}
+        />
       </div>
     );
   }

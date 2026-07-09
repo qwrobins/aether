@@ -46,7 +46,7 @@ function copyExternalModules(
   _arch: string,
   callback: (err?: Error | null) => void,
 ) {
-  const rootModules = ['ssh2', 'ssh2-sftp-client', 'cpu-features', 'electron-store'];
+  const rootModules = ['ssh2', 'ssh2-sftp-client', 'cpu-features'];
   const srcBase = path.resolve(__dirname, 'node_modules');
   const destBase = path.join(_buildPath, 'node_modules');
 

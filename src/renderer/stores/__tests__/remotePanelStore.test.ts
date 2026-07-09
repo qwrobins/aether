@@ -76,6 +76,7 @@ function mockInvoke(
 
 describe('useRemotePanelStore', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     resetStore();
     window.api.invoke = vi.fn();
   });
@@ -127,6 +128,39 @@ describe('useRemotePanelStore', () => {
       activeConnectionId: 'sftp-1',
       currentPath: '/var/www',
     });
+  });
+
+  it('confirms and persists a first-use SSH host key before reconnecting', async () => {
+    const listing: DirectoryListing = {
+      path: '/',
+      parentPath: null,
+      entries: [],
+    };
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let connectAttempts = 0;
+    mockInvoke(async (channel) => {
+      if (channel === 'conn:connect') {
+        connectAttempts++;
+        return connectAttempts === 1
+          ? { status: 'host-key-untrusted', fingerprint: 'SHA256:trusted' }
+          : { status: 'connected' };
+      }
+      if (channel === 'conn:save') return 'sftp-1';
+      if (channel === 'sftp:list') return listing;
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    await useRemotePanelStore.getState().connect(sftpProfile());
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('SHA256:trusted'));
+    expect(window.api.invoke).toHaveBeenCalledWith(
+      'conn:save',
+      expect.objectContaining({ id: 'sftp-1', hostKeyFingerprint: 'SHA256:trusted' }),
+    );
+    expect(connectAttempts).toBe(2);
+    expect(useRemotePanelStore.getState().activeProfile).toEqual(
+      expect.objectContaining({ hostKeyFingerprint: 'SHA256:trusted' }),
+    );
   });
 
   it('refreshes bucket list when connected to S3 without a selected bucket', async () => {

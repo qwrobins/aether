@@ -141,6 +141,20 @@ export function SftpConnectionForm({ formData, onChange }: SftpConnectionFormPro
           onChange={(e) => onChange('defaultPath', e.target.value)}
         />
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="sftp-host-key">SSH Host Key Fingerprint</Label>
+        <Input
+          id="sftp-host-key"
+          className="font-mono text-[12px]"
+          placeholder="Trust on first connect"
+          value={formData.hostKeyFingerprint ?? ''}
+          onChange={(e) => onChange('hostKeyFingerprint', e.target.value)}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Verify this SHA256 fingerprint with the server administrator.
+        </p>
+      </div>
     </div>
   );
 }
