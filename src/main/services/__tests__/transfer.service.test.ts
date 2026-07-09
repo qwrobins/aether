@@ -31,7 +31,13 @@ vi.mock('@aws-sdk/lib-storage', () => ({
 
 type TransferServiceInternals = {
   cancelTransfer: (item: TransferItem) => Promise<void>;
-  emitProgress: (id: string, bytes: number, total: number, speed: number) => void;
+  emitProgress: (
+    id: string,
+    bytes: number,
+    total: number,
+    speed: number,
+    force?: boolean,
+  ) => void;
   transfers: Map<string, TransferItem>;
   abortControllers: Map<string, AbortController>;
   setSftpClientFactory: (factory: (connectionId: string) => Promise<unknown>) => void;
@@ -131,6 +137,29 @@ describe('TransferService', () => {
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
       expect.objectContaining({ transferId: id, status: 'completed', success: true }),
+    );
+  });
+
+  it('throttles intermediate progress while preserving terminal updates', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-07T10:00:00.000Z'));
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    service.setWindow({ webContents: { send } } as never);
+
+    internals.emitProgress('transfer-1', 1, 100, 10);
+    vi.advanceTimersByTime(50);
+    internals.emitProgress('transfer-1', 2, 100, 10);
+    vi.advanceTimersByTime(50);
+    internals.emitProgress('transfer-1', 3, 100, 10);
+    internals.emitProgress('transfer-1', 100, 100, 0);
+
+    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenLastCalledWith(
+      'transfer:progress',
+      expect.objectContaining({ bytesTransferred: 100, totalBytes: 100 }),
     );
   });
 

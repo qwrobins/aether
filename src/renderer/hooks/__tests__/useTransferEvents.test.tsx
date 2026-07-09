@@ -146,6 +146,34 @@ describe('useTransferEvents', () => {
     expect(remoteRefresh).not.toHaveBeenCalled();
   });
 
+  it('refreshes once after the final transfer in a batch completes', () => {
+    const handlers: EventHandlers = {};
+    mockEventSubscriptions(handlers);
+    const remoteRefresh = vi.fn();
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.setState({
+      transfers: [
+        transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+        transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+      ],
+    });
+    render(<HookHarness />);
+
+    handlers['transfer:complete']?.({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    expect(remoteRefresh).not.toHaveBeenCalled();
+
+    handlers['transfer:complete']?.({
+      transferId: 'two',
+      status: 'completed',
+      success: true,
+    });
+    expect(remoteRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it('marks cancelled transfers without refreshing panes', () => {
     const handlers: EventHandlers = {};
     mockEventSubscriptions(handlers);

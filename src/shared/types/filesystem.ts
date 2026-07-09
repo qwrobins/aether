@@ -12,6 +12,7 @@ export interface DirectoryListing {
   path: string;
   entries: FileEntry[];
   parentPath: string | null;
+  continuationToken?: string;
 }
 
 export interface DriveInfo {

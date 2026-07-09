@@ -6,6 +6,7 @@ interface TransferState {
   transfers: TransferItem[];
 
   addTransfer: (item: TransferItem) => void;
+  addTransfers: (items: TransferItem[]) => void;
   updateProgress: (progress: TransferProgress) => void;
   markComplete: (result: TransferResult) => void;
   markError: (transferId: string, error: string) => void;
@@ -26,6 +27,12 @@ export const useTransferStore = create<TransferState>((set, get) => ({
   addTransfer: (item) => {
     set((s) => ({ transfers: [...s.transfers, item] }));
     // Auto-expand the transfer queue so progress bars are visible
+    useUiStore.setState({ transferQueueExpanded: true });
+  },
+
+  addTransfers: (items) => {
+    if (items.length === 0) return;
+    set((s) => ({ transfers: [...s.transfers, ...items] }));
     useUiStore.setState({ transferQueueExpanded: true });
   },
 

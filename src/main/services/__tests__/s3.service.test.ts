@@ -361,7 +361,8 @@ describe('S3Service', () => {
         .mockResolvedValueOnce({
           Errors: [{ Key: 'photos/b.jpg', Code: 'InternalError', Message: 'retry me' }],
         })
-        .mockResolvedValueOnce({ Errors: [] }),
+        .mockResolvedValueOnce({ Errors: [] })
+        .mockResolvedValueOnce({ Contents: [], IsTruncated: false }),
       destroy: vi.fn(),
     };
 
@@ -371,7 +372,7 @@ describe('S3Service', () => {
     await vi.runOnlyPendingTimersAsync();
     await deleting;
 
-    expect(client.send).toHaveBeenCalledTimes(3);
+    expect(client.send).toHaveBeenCalledTimes(4);
     expect((client.send.mock.calls[1][0] as DeleteObjectsCommand).input).toMatchObject({
       Delete: { Objects: [{ Key: 'photos/a.jpg' }, { Key: 'photos/b.jpg' }] },
     });

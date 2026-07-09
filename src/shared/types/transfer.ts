@@ -17,6 +17,7 @@ export interface TransferRequest {
 
 export interface TransferItem {
   id: string;
+  batchId?: string;
   fileName: string;
   sourcePath: string;
   destinationPath: string;

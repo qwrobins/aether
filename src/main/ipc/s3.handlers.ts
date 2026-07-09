@@ -89,8 +89,14 @@ export function registerS3Handlers(ipcMain: IpcMainHandle): void {
 
   ipcMain.handle(
     IpcChannels.S3_LIST_OBJECTS,
-    async (_event, connectionId: string, bucket: string, prefix: string) => {
-      return s3Service.listObjects(connectionId, bucket, prefix);
+    async (
+      _event,
+      connectionId: string,
+      bucket: string,
+      prefix: string,
+      continuationToken?: string,
+    ) => {
+      return s3Service.listObjects(connectionId, bucket, prefix, continuationToken);
     },
   );
 

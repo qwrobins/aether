@@ -63,6 +63,30 @@ describe('FilesystemService', () => {
     expect(listing.entries[2]).toEqual(expect.objectContaining({ name: 'broken', size: 0, isDirectory: false }));
   });
 
+  it('bounds concurrent stat calls for large directories', async () => {
+    readdirMock.mockResolvedValue(
+      Array.from({ length: 70 }, (_, index) => ({
+        name: `file-${index}.txt`,
+        isDirectory: () => false,
+      })),
+    );
+    let activeCalls = 0;
+    let maxActiveCalls = 0;
+    fsStatMock.mockImplementation(async () => {
+      activeCalls++;
+      maxActiveCalls = Math.max(maxActiveCalls, activeCalls);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      activeCalls--;
+      return { size: 1, mtime: new Date('2026-03-07T10:00:00.000Z') };
+    });
+
+    const { FilesystemService } = await import('../filesystem.service');
+    const listing = await new FilesystemService().readDirectory('/workspace');
+
+    expect(listing.entries).toHaveLength(70);
+    expect(maxActiveCalls).toBeLessThanOrEqual(32);
+  });
+
   it('lists files recursively with nested relative paths', async () => {
     readdirMock
       .mockResolvedValueOnce([

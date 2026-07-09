@@ -84,12 +84,15 @@ export function RemotePanel() {
     entries,
     selectedFiles,
     isLoading,
+    isLoadingMore,
+    continuationToken,
     error,
     sortField,
     sortDirection,
     viewMode,
     navigateTo,
     refresh,
+    loadMoreEntries,
     loadBuckets,
     selectFile,
     setSort,
@@ -147,11 +150,9 @@ export function RemotePanel() {
             };
 
             const result = await window.api.invoke('transfer:start', request);
-            const addTransfer = useTransferStore.getState().addTransfer;
+            const { addTransfer, addTransfers } = useTransferStore.getState();
             if (Array.isArray(result)) {
-              for (const item of result) {
-                addTransfer(item);
-              }
+              addTransfers(result);
             } else {
               addTransfer({
                 id: result,
@@ -200,11 +201,9 @@ export function RemotePanel() {
           };
 
           const result = await window.api.invoke('transfer:start', request);
-          const addTransfer = useTransferStore.getState().addTransfer;
+          const { addTransfer, addTransfers } = useTransferStore.getState();
           if (Array.isArray(result)) {
-            for (const item of result) {
-              addTransfer(item);
-            }
+            addTransfers(result);
           } else {
             addTransfer({
               id: result,
@@ -395,11 +394,9 @@ export function RemotePanel() {
       };
 
       const result = await window.api.invoke('transfer:start', request);
-      const addTransfer = useTransferStore.getState().addTransfer;
+      const { addTransfer, addTransfers } = useTransferStore.getState();
       if (Array.isArray(result)) {
-        for (const item of result) {
-          addTransfer(item);
-        }
+        addTransfers(result);
       } else {
         addTransfer({
           id: result,
@@ -491,6 +488,7 @@ export function RemotePanel() {
         )}
 
         <FileList
+          listKey={`${activeConnectionId}:${currentPath}`}
           entries={entries}
           selectedFiles={selectedFiles}
           isLoading={isLoading}
@@ -505,6 +503,9 @@ export function RemotePanel() {
           onRename={handleRename}
           onNewFolder={handleNewFolder}
           onTransfer={handleTransfer}
+          hasMoreEntries={Boolean(continuationToken)}
+          isLoadingMore={isLoadingMore}
+          onLoadMore={loadMoreEntries}
         />
       </div>
     );
@@ -589,6 +590,7 @@ export function RemotePanel() {
       </button>
 
       <FileList
+        listKey={`${activeConnectionId}:${currentBucket}:${currentPath}`}
         entries={entries}
         selectedFiles={selectedFiles}
         isLoading={isLoading}
@@ -603,6 +605,9 @@ export function RemotePanel() {
         onRename={handleRename}
         onNewFolder={handleNewFolder}
         onTransfer={handleTransfer}
+        hasMoreEntries={Boolean(continuationToken)}
+        isLoadingMore={isLoadingMore}
+        onLoadMore={loadMoreEntries}
       />
     </div>
   );

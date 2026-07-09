@@ -36,6 +36,16 @@ describe('useTransferStore', () => {
     expect(useUiStore.getState().transferQueueExpanded).toBe(true);
   });
 
+  it('adds directory transfer batches in one state update', () => {
+    useTransferStore.getState().addTransfers([
+      transfer({ id: 'one', batchId: 'batch-1' }),
+      transfer({ id: 'two', batchId: 'batch-1' }),
+    ]);
+
+    expect(useTransferStore.getState().transfers.map((item) => item.id)).toEqual(['one', 'two']);
+    expect(useUiStore.getState().transferQueueExpanded).toBe(true);
+  });
+
   it('updates progress and completion state', () => {
     useTransferStore.setState({ transfers: [transfer({ id: 'one' })] });
 

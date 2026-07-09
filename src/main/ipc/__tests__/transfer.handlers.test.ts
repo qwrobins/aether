@@ -3,10 +3,16 @@ import { IpcChannels } from '@shared/constants/channels';
 import type { TransferItem, TransferRequest } from '@shared/types/transfer';
 
 const transferItems = new Map<string, TransferItem>();
-const enqueue = vi.fn(async (request: TransferRequest, _s3Client?: unknown, _sftpClient?: unknown, size?: number) => {
+const enqueue = vi.fn(async (
+  request: TransferRequest,
+  _s3Client?: unknown,
+  size?: number,
+  batchId?: string,
+) => {
   const id = `transfer-${enqueue.mock.calls.length}`;
   transferItems.set(id, {
     id,
+    batchId,
     fileName: request.sourcePath.split('/').pop() ?? request.sourcePath,
     ...request,
     size: size ?? 0,
@@ -159,6 +165,8 @@ describe('registerTransferHandlers', () => {
     });
     expect(Array.isArray(result)).toBe(true);
     expect((result as TransferItem[]).map((item) => item.id)).toEqual(['transfer-1', 'transfer-2']);
+    expect((result as TransferItem[])[0].batchId).toBeTypeOf('string');
+    expect((result as TransferItem[])[1].batchId).toBe((result as TransferItem[])[0].batchId);
   });
 
   it('expands explicit S3 directory downloads into file transfers with preserved sizes', async () => {

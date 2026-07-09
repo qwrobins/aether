@@ -14,6 +14,7 @@ import { shell } from 'electron';
 import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/filesystem';
 
 const execFileAsync = promisify(execFile);
+const DIRECTORY_STAT_CONCURRENCY = 32;
 
 interface RecursiveListOptions {
   maxFiles?: number;
@@ -29,29 +30,33 @@ export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
 
-    const entries: FileEntry[] = await Promise.all(
-      dirents.map(async (dirent) => {
-        const fullPath = join(dirPath, dirent.name);
-        try {
-          const stats = await fsStat(fullPath);
-          return {
-            name: dirent.name,
-            path: fullPath,
-            size: dirent.isDirectory() ? 0 : stats.size,
-            isDirectory: dirent.isDirectory(),
-            modifiedAt: stats.mtime.toISOString(),
-          };
-        } catch {
-          return {
-            name: dirent.name,
-            path: fullPath,
-            size: 0,
-            isDirectory: dirent.isDirectory(),
-            modifiedAt: new Date().toISOString(),
-          };
-        }
-      }),
-    );
+    const entries: FileEntry[] = [];
+    for (let index = 0; index < dirents.length; index += DIRECTORY_STAT_CONCURRENCY) {
+      const batch = await Promise.all(
+        dirents.slice(index, index + DIRECTORY_STAT_CONCURRENCY).map(async (dirent) => {
+          const fullPath = join(dirPath, dirent.name);
+          try {
+            const stats = await fsStat(fullPath);
+            return {
+              name: dirent.name,
+              path: fullPath,
+              size: dirent.isDirectory() ? 0 : stats.size,
+              isDirectory: dirent.isDirectory(),
+              modifiedAt: stats.mtime.toISOString(),
+            };
+          } catch {
+            return {
+              name: dirent.name,
+              path: fullPath,
+              size: 0,
+              isDirectory: dirent.isDirectory(),
+              modifiedAt: new Date().toISOString(),
+            };
+          }
+        }),
+      );
+      entries.push(...batch);
+    }
 
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) {

@@ -65,6 +65,8 @@ function resetStore(): void {
     sortField: 'name',
     sortDirection: 'asc',
     isLoading: false,
+    isLoadingMore: false,
+    continuationToken: null,
     error: null,
   });
 }
@@ -107,6 +109,77 @@ describe('useRemotePanelStore', () => {
       currentPath: '',
     });
     expect(useRemotePanelStore.getState().entries.map((item: FileEntry) => item.name)).toEqual(['docs', 'b.txt']);
+  });
+
+  it('loads additional S3 object pages without duplicating entries', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'albums/',
+      continuationToken: 'page-2',
+      entries: [fileEntry({ name: 'a.jpg', path: 'albums/a.jpg' })],
+    });
+    mockInvoke(async (channel, ...args) => {
+      if (channel === 's3:list-objects') {
+        expect(args).toEqual(['s3-1', 'photos', 'albums/', 'page-2']);
+        return {
+          path: 'albums/',
+          parentPath: '',
+          entries: [
+            fileEntry({ name: 'a.jpg', path: 'albums/a.jpg' }),
+            fileEntry({ name: 'b.jpg', path: 'albums/b.jpg' }),
+          ],
+        } satisfies DirectoryListing;
+      }
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    await useRemotePanelStore.getState().loadMoreEntries();
+
+    expect(useRemotePanelStore.getState().entries.map((entry) => entry.path)).toEqual([
+      'albums/a.jpg',
+      'albums/b.jpg',
+    ]);
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      continuationToken: null,
+      isLoadingMore: false,
+    });
+  });
+
+  it('ignores stale S3 page failures after navigation changes', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'old/',
+      continuationToken: 'page-2',
+      entries: [],
+    });
+    let rejectRequest: (reason: Error) => void = () => undefined;
+    mockInvoke(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+
+    const loading = useRemotePanelStore.getState().loadMoreEntries();
+    useRemotePanelStore.setState({
+      currentPath: 'new/',
+      isLoadingMore: true,
+      error: null,
+    });
+    rejectRequest(new Error('old request failed'));
+    await loading;
+
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      currentPath: 'new/',
+      isLoadingMore: true,
+      error: null,
+    });
   });
 
   it('connects an SFTP profile and navigates to its default path', async () => {

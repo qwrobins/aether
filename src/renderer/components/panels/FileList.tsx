@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ChevronUp, ChevronDown, FolderOpen, FolderPlus } from 'lucide-react';
 import {
   ContextMenu,
@@ -12,6 +13,7 @@ import {
   TableBody,
   TableRow,
   TableHead,
+  TableCell,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FileItem } from './FileItem';
@@ -20,6 +22,7 @@ import type { PanelType } from './FileItem';
 import type { FileEntry, SortField, SortDirection, ViewMode } from '@shared/types/filesystem';
 
 interface FileListProps {
+  listKey: string;
   entries: FileEntry[];
   selectedFiles: Set<string>;
   isLoading: boolean;
@@ -34,7 +37,12 @@ interface FileListProps {
   onRename: (oldPath: string) => void;
   onNewFolder: () => void;
   onTransfer: (entry: FileEntry) => void;
+  hasMoreEntries?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => Promise<void>;
 }
+
+const ENTRIES_PER_PAGE = 250;
 
 function SortIndicator({
   field,
@@ -54,6 +62,7 @@ function SortIndicator({
 }
 
 export function FileList({
+  listKey,
   entries,
   selectedFiles,
   isLoading,
@@ -68,7 +77,61 @@ export function FileList({
   onRename,
   onNewFolder,
   onTransfer,
+  hasMoreEntries = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: FileListProps) {
+  const [pageIndex, setPageIndex] = useState(0);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [listKey]);
+
+  useEffect(() => {
+    const lastPage = Math.max(0, Math.ceil(entries.length / ENTRIES_PER_PAGE) - 1);
+    setPageIndex((current) => Math.min(current, lastPage));
+  }, [entries.length]);
+
+  const pageStart = pageIndex * ENTRIES_PER_PAGE;
+  const visibleEntries = entries.slice(pageStart, pageStart + ENTRIES_PER_PAGE);
+  const hasPreviousPage = pageIndex > 0;
+  const hasNextLocalPage = pageStart + ENTRIES_PER_PAGE < entries.length;
+  const showPagination = hasPreviousPage || hasNextLocalPage || hasMoreEntries;
+
+  const paginationControls = showPagination ? (
+    <div className="flex items-center justify-center gap-2 py-3">
+      <button
+        type="button"
+        className="rounded-md border border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+        disabled={!hasPreviousPage}
+        onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+      >
+        Previous
+      </button>
+      <span className="font-mono text-[11px] text-muted-foreground">
+        {pageStart + 1}–{pageStart + visibleEntries.length} of {entries.length}
+      </span>
+      {hasNextLocalPage ? (
+        <button
+          type="button"
+          className="rounded-md border border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          onClick={() => setPageIndex((current) => current + 1)}
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="rounded-md border border-border/60 px-3 py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-40"
+          disabled={!hasMoreEntries || isLoadingMore}
+          onClick={() => void onLoadMore?.()}
+        >
+          {isLoadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (isLoading) {
     if (viewMode === 'grid') {
       return (
@@ -165,11 +228,11 @@ export function FileList({
             aria-label="File grid"
           >
             <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(120px,1fr))] content-start gap-1 p-3">
-              {entries.map((entry, index) => (
+              {visibleEntries.map((entry, index) => (
                 <FileGridItem
                   key={entry.path}
                   entry={entry}
-                  index={index}
+                  index={pageStart + index}
                   isSelected={selectedFiles.has(entry.path)}
                   allEntries={entries}
                   selectedFiles={selectedFiles}
@@ -181,6 +244,9 @@ export function FileList({
                   onTransfer={onTransfer}
                 />
               ))}
+              {paginationControls && (
+                <div className="col-span-full">{paginationControls}</div>
+              )}
             </div>
           </div>
         </ContextMenuTrigger>
@@ -253,11 +319,11 @@ export function FileList({
           <div className="min-h-0 flex-1 overflow-auto">
             <Table>
               <TableBody>
-                {entries.map((entry, index) => (
+                {visibleEntries.map((entry, index) => (
                   <FileItem
                     key={entry.path}
                     entry={entry}
-                    index={index}
+                    index={pageStart + index}
                     isSelected={selectedFiles.has(entry.path)}
                     allEntries={entries}
                     selectedFiles={selectedFiles}
@@ -269,6 +335,11 @@ export function FileList({
                     onTransfer={onTransfer}
                   />
                 ))}
+                {paginationControls && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={5}>{paginationControls}</TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

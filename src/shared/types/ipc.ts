@@ -33,7 +33,7 @@ export interface IpcInvokeMap {
   's3:list-profiles': { args: []; return: string[] };
   's3:list-roles': { args: [region: string, accessKeyId?: string, secretAccessKey?: string]; return: Array<{ arn: string; name: string }> };
   's3:list-buckets': { args: [connectionId: string]; return: string[] };
-  's3:list-objects': { args: [connectionId: string, bucket: string, prefix: string]; return: DirectoryListing };
+  's3:list-objects': { args: [connectionId: string, bucket: string, prefix: string, continuationToken?: string]; return: DirectoryListing };
   's3:delete-object': { args: [connectionId: string, bucket: string, key: string]; return: void };
   's3:create-folder': { args: [connectionId: string, bucket: string, key: string]; return: void };
 

@@ -22,9 +22,27 @@ export function useTransferEvents() {
         .getState()
         .transfers.find((t) => t.id === result.transferId);
       useTransferStore.getState().markComplete(result);
+      const updatedTransfers = useTransferStore.getState().transfers;
+      const batchStillActive = transfer?.batchId
+        ? updatedTransfers.some(
+            (candidate) =>
+              candidate.batchId === transfer.batchId &&
+              ['active', 'queued'].includes(candidate.status),
+          )
+        : false;
+      const batchHasSuccessfulTransfer = transfer?.batchId
+        ? updatedTransfers.some(
+            (candidate) =>
+              candidate.batchId === transfer.batchId && candidate.status === 'completed',
+          )
+        : false;
+      const shouldRefreshDestination =
+        Boolean(transfer) &&
+        !batchStillActive &&
+        (result.success || batchHasSuccessfulTransfer);
 
       // Auto-refresh the destination pane after a successful transfer
-      if (result.success && transfer) {
+      if (shouldRefreshDestination && transfer) {
         if (transfer.connectionType === 'taildrop') {
           useTaildropStore.getState().addHistory({
             id: result.transferId,
