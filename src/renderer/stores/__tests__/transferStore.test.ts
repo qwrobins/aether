@@ -25,7 +25,7 @@ function transfer(overrides: Partial<TransferItem>): TransferItem {
 
 describe('useTransferStore', () => {
   beforeEach(() => {
-    useTransferStore.setState({ transfers: [] });
+    useTransferStore.getState().setTransfers([]);
     useUiStore.setState({ transferQueueExpanded: false, sidebarExpanded: true, theme: 'dark' });
   });
 
@@ -63,9 +63,18 @@ describe('useTransferStore', () => {
       status: 'active',
     });
 
-    useTransferStore.getState().markComplete({ transferId: 'one', status: 'completed', success: true });
+    const completion = useTransferStore.getState().markComplete({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(useTransferStore.getState().transfers[0].completedAt).toBeTypeOf('string');
+    expect(completion?.transfer).toMatchObject({
+      id: 'one',
+      status: 'completed',
+      completedAt: expect.any(String),
+    });
   });
 
   it('preserves cancelled completion state', () => {
@@ -82,6 +91,35 @@ describe('useTransferStore', () => {
       speed: 0,
     });
     expect(useTransferStore.getState().transfers[0].error).toBeUndefined();
+  });
+
+  it('tracks batch completion without rescanning completed transfers', () => {
+    useTransferStore.getState().setTransfers([
+      transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+      transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+    ]);
+
+    const first = useTransferStore.getState().markComplete({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    const second = useTransferStore.getState().markComplete({
+      transferId: 'two',
+      status: 'failed',
+      success: false,
+      error: 'failed',
+    });
+
+    expect(first).toMatchObject({
+      batchFinished: false,
+      batchHasSuccessfulTransfer: true,
+    });
+    expect(second).toMatchObject({
+      batchFinished: true,
+      batchHasSuccessfulTransfer: true,
+    });
+    expect(useTransferStore.getState().batchProgress).toEqual({});
   });
 
   it('reports counts and remaining bytes from active and queued transfers', () => {

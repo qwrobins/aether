@@ -46,7 +46,7 @@ function mockEventSubscriptions(handlers: EventHandlers): void {
 
 describe('useTransferEvents', () => {
   beforeEach(() => {
-    useTransferStore.setState({ transfers: [] });
+    useTransferStore.getState().setTransfers([]);
     useLocalPanelStore.setState({ refresh: vi.fn() });
     useRemotePanelStore.setState({ refresh: vi.fn() });
   });
@@ -151,12 +151,10 @@ describe('useTransferEvents', () => {
     mockEventSubscriptions(handlers);
     const remoteRefresh = vi.fn();
     useRemotePanelStore.setState({ refresh: remoteRefresh });
-    useTransferStore.setState({
-      transfers: [
-        transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
-        transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
-      ],
-    });
+    useTransferStore.getState().setTransfers([
+      transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+      transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+    ]);
     render(<HookHarness />);
 
     handlers['transfer:complete']?.({
@@ -171,6 +169,32 @@ describe('useTransferEvents', () => {
       status: 'completed',
       success: true,
     });
+    expect(remoteRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes after a mixed-result batch finishes when at least one transfer succeeded', () => {
+    const handlers: EventHandlers = {};
+    mockEventSubscriptions(handlers);
+    const remoteRefresh = vi.fn();
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.getState().setTransfers([
+      transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+      transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+    ]);
+    render(<HookHarness />);
+
+    handlers['transfer:complete']?.({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    handlers['transfer:complete']?.({
+      transferId: 'two',
+      status: 'failed',
+      success: false,
+      error: 'failed',
+    });
+
     expect(remoteRefresh).toHaveBeenCalledTimes(1);
   });
 

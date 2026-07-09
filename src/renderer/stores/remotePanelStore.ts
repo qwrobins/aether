@@ -32,6 +32,7 @@ interface RemotePanelState {
   isLoading: boolean;
   isLoadingMore: boolean;
   continuationToken: string | null;
+  navigationGeneration: number;
   error: string | null;
 
   // Connection actions
@@ -146,6 +147,7 @@ const initialState = {
   isLoading: false,
   isLoadingMore: false,
   continuationToken: null as string | null,
+  navigationGeneration: 0,
   error: null as string | null,
 };
 
@@ -153,12 +155,13 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   ...initialState,
 
   connect: async (profile: ConnectionProfile) => {
-    set({
+    set((state) => ({
       mode: 'connection',
       connectionStatus: 'connecting',
       connectionError: null,
       activeProfile: profile,
-    });
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
     try {
       let connectResult = await window.api.invoke('conn:connect', profile.id);
       let connectedProfile = profile;
@@ -233,15 +236,19 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         // Ignore disconnect errors
       }
     }
-    set({ ...initialState });
+    set((state) => ({
+      ...initialState,
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
   },
 
   activateTaildrop: () => {
-    set({
+    set((state) => ({
       ...initialState,
       mode: 'taildrop',
       connectionStatus: 'connected',
-    });
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
   },
 
   loadBuckets: async () => {
@@ -260,14 +267,15 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   selectBucket: async (bucket: string) => {
-    set({
+    set((state) => ({
       currentBucket: bucket,
       currentPath: '',
       entries: [],
       continuationToken: null,
       selectedFiles: new Set(),
       selectionAnchor: null,
-    });
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
     await get().navigateTo('');
   },
 
@@ -277,27 +285,37 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
 
     if (activeProfile.type === 's3' && !currentBucket) return;
 
+    const navigationGeneration = get().navigationGeneration + 1;
     set({
       isLoading: true,
       isLoadingMore: false,
       continuationToken: null,
+      navigationGeneration,
       error: null,
       selectedFiles: new Set(),
       selectionAnchor: null,
     });
     try {
       const listing = await listRemoteEntries(activeConnectionId, activeProfile, currentBucket, path);
-      set({
-        currentPath: path,
-        entries: sortEntries(listing.entries, sortField, sortDirection),
-        continuationToken: listing.continuationToken ?? null,
-        isLoading: false,
-      });
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              currentPath: path,
+              entries: sortEntries(listing.entries, sortField, sortDirection),
+              continuationToken: listing.continuationToken ?? null,
+              isLoading: false,
+            }
+          : {},
+      );
     } catch (err) {
-      set({
-        error: err instanceof Error ? err.message : 'Failed to list directory',
-        isLoading: false,
-      });
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              error: err instanceof Error ? err.message : 'Failed to list directory',
+              isLoading: false,
+            }
+          : {},
+      );
     }
   },
 
@@ -340,6 +358,7 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       currentPath,
       continuationToken,
       isLoadingMore,
+      navigationGeneration,
     } = get();
     if (
       isLoadingMore ||
@@ -364,7 +383,8 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         if (
           state.activeConnectionId !== activeConnectionId ||
           state.currentBucket !== currentBucket ||
-          state.currentPath !== currentPath
+          state.currentPath !== currentPath ||
+          state.navigationGeneration !== navigationGeneration
         ) {
           return {};
         }
@@ -386,7 +406,8 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         if (
           state.activeConnectionId !== activeConnectionId ||
           state.currentBucket !== currentBucket ||
-          state.currentPath !== currentPath
+          state.currentPath !== currentPath ||
+          state.navigationGeneration !== navigationGeneration
         ) {
           return {};
         }

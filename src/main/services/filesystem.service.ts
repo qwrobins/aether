@@ -30,14 +30,18 @@ export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
 
-    const entries: FileEntry[] = [];
-    for (let index = 0; index < dirents.length; index += DIRECTORY_STAT_CONCURRENCY) {
-      const batch = await Promise.all(
-        dirents.slice(index, index + DIRECTORY_STAT_CONCURRENCY).map(async (dirent) => {
+    const entries = new Array<FileEntry>(dirents.length);
+    let nextIndex = 0;
+    const workers = Array.from(
+      { length: Math.min(DIRECTORY_STAT_CONCURRENCY, dirents.length) },
+      async () => {
+        while (nextIndex < dirents.length) {
+          const index = nextIndex++;
+          const dirent = dirents[index];
           const fullPath = join(dirPath, dirent.name);
           try {
             const stats = await fsStat(fullPath);
-            return {
+            entries[index] = {
               name: dirent.name,
               path: fullPath,
               size: dirent.isDirectory() ? 0 : stats.size,
@@ -45,7 +49,7 @@ export class FilesystemService {
               modifiedAt: stats.mtime.toISOString(),
             };
           } catch {
-            return {
+            entries[index] = {
               name: dirent.name,
               path: fullPath,
               size: 0,
@@ -53,10 +57,10 @@ export class FilesystemService {
               modifiedAt: new Date().toISOString(),
             };
           }
-        }),
-      );
-      entries.push(...batch);
-    }
+        }
+      },
+    );
+    await Promise.all(workers);
 
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) {

@@ -203,8 +203,11 @@ export function FileList({
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon={FolderOpen} title="This folder is empty" />
+          <div className="flex flex-1 flex-col">
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState icon={FolderOpen} title="This folder is empty" />
+            </div>
+            {paginationControls}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">

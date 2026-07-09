@@ -67,6 +67,7 @@ function resetStore(): void {
     isLoading: false,
     isLoadingMore: false,
     continuationToken: null,
+    navigationGeneration: 0,
     error: null,
   });
 }
@@ -180,6 +181,56 @@ describe('useRemotePanelStore', () => {
       isLoadingMore: true,
       error: null,
     });
+  });
+
+  it('ignores an old S3 page after navigating away and back to the same prefix', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'albums/',
+      continuationToken: 'old-page-2',
+      entries: [fileEntry({ name: 'old.jpg', path: 'albums/old.jpg' })],
+    });
+    let resolveOldPage: ((listing: DirectoryListing) => void) | undefined;
+    mockInvoke(async (channel, ...args) => {
+      if (channel !== 's3:list-objects') {
+        return Promise.reject(new Error(`Unhandled channel ${channel}`));
+      }
+      const path = args[2];
+      const token = args[3];
+      if (token === 'old-page-2') {
+        return new Promise<DirectoryListing>((resolve) => {
+          resolveOldPage = resolve;
+        });
+      }
+      if (path === 'other/') {
+        return { path: 'other/', parentPath: '', entries: [] } satisfies DirectoryListing;
+      }
+      return {
+        path: 'albums/',
+        parentPath: '',
+        entries: [fileEntry({ name: 'fresh.jpg', path: 'albums/fresh.jpg' })],
+        continuationToken: 'fresh-page-2',
+      } satisfies DirectoryListing;
+    });
+
+    const oldPage = useRemotePanelStore.getState().loadMoreEntries();
+    await useRemotePanelStore.getState().navigateTo('other/');
+    await useRemotePanelStore.getState().navigateTo('albums/');
+    resolveOldPage?.({
+      path: 'albums/',
+      parentPath: '',
+      entries: [fileEntry({ name: 'stale.jpg', path: 'albums/stale.jpg' })],
+      continuationToken: null,
+    });
+    await oldPage;
+
+    expect(useRemotePanelStore.getState().entries.map((entry) => entry.path)).toEqual([
+      'albums/fresh.jpg',
+    ]);
+    expect(useRemotePanelStore.getState().continuationToken).toBe('fresh-page-2');
   });
 
   it('connects an SFTP profile and navigates to its default path', async () => {

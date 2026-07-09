@@ -87,6 +87,32 @@ describe('FilesystemService', () => {
     expect(maxActiveCalls).toBeLessThanOrEqual(32);
   });
 
+  it('starts new stat calls as soon as a concurrency slot becomes available', async () => {
+    readdirMock.mockResolvedValue(
+      Array.from({ length: 33 }, (_, index) => ({
+        name: `file-${index}.txt`,
+        isDirectory: () => false,
+      })),
+    );
+    let resolveSlowStat: ((value: { size: number; mtime: Date }) => void) | undefined;
+    fsStatMock.mockImplementation((filePath: string) => {
+      if (filePath.endsWith('/file-0.txt')) {
+        return new Promise((resolve) => {
+          resolveSlowStat = resolve;
+        });
+      }
+      return Promise.resolve({ size: 1, mtime: new Date('2026-03-07T10:00:00.000Z') });
+    });
+
+    const { FilesystemService } = await import('../filesystem.service');
+    const listingPromise = new FilesystemService().readDirectory('/workspace');
+
+    await vi.waitFor(() => expect(fsStatMock).toHaveBeenCalledTimes(33));
+    resolveSlowStat?.({ size: 1, mtime: new Date('2026-03-07T10:00:00.000Z') });
+
+    await expect(listingPromise).resolves.toMatchObject({ path: '/workspace' });
+  });
+
   it('lists files recursively with nested relative paths', async () => {
     readdirMock
       .mockResolvedValueOnce([

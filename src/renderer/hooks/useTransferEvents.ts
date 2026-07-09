@@ -17,29 +17,11 @@ export function useTransferEvents() {
     });
     const unsubComplete = window.api.on('transfer:complete', (data: unknown) => {
       const result = data as TransferResult;
-      // Look up the transfer BEFORE marking complete so we know its direction
-      const transfer = useTransferStore
-        .getState()
-        .transfers.find((t) => t.id === result.transferId);
-      useTransferStore.getState().markComplete(result);
-      const updatedTransfers = useTransferStore.getState().transfers;
-      const batchStillActive = transfer?.batchId
-        ? updatedTransfers.some(
-            (candidate) =>
-              candidate.batchId === transfer.batchId &&
-              ['active', 'queued'].includes(candidate.status),
-          )
-        : false;
-      const batchHasSuccessfulTransfer = transfer?.batchId
-        ? updatedTransfers.some(
-            (candidate) =>
-              candidate.batchId === transfer.batchId && candidate.status === 'completed',
-          )
-        : false;
+      const completion = useTransferStore.getState().markComplete(result);
+      const transfer = completion?.transfer;
       const shouldRefreshDestination =
-        Boolean(transfer) &&
-        !batchStillActive &&
-        (result.success || batchHasSuccessfulTransfer);
+        Boolean(completion?.batchFinished) &&
+        Boolean(completion?.batchHasSuccessfulTransfer);
 
       // Auto-refresh the destination pane after a successful transfer
       if (shouldRefreshDestination && transfer) {
