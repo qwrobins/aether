@@ -219,11 +219,13 @@ describe('useRemotePanelStore', () => {
     const oldPage = useRemotePanelStore.getState().loadMoreEntries();
     await useRemotePanelStore.getState().navigateTo('other/');
     await useRemotePanelStore.getState().navigateTo('albums/');
-    resolveOldPage?.({
+    if (!resolveOldPage) {
+      throw new Error('Expected the old S3 page request to be pending');
+    }
+    resolveOldPage({
       path: 'albums/',
       parentPath: '',
       entries: [fileEntry({ name: 'stale.jpg', path: 'albums/stale.jpg' })],
-      continuationToken: null,
     });
     await oldPage;
 
@@ -329,7 +331,10 @@ describe('useRemotePanelStore', () => {
 
     const connect = useRemotePanelStore.getState().connect(sftpProfile());
     useRemotePanelStore.getState().activateTaildrop();
-    resolveConnect?.({ status: 'connected' });
+    if (!resolveConnect) {
+      throw new Error('Expected the SFTP connection request to be pending');
+    }
+    resolveConnect({ status: 'connected' });
     await connect;
 
     expect(window.api.invoke).toHaveBeenCalledWith('conn:disconnect', 'sftp-1');

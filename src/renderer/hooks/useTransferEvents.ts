@@ -23,32 +23,25 @@ export function useTransferEvents() {
         Boolean(completion?.batchFinished) &&
         Boolean(completion?.batchHasSuccessfulTransfer);
 
-      // Auto-refresh the destination pane after a successful transfer
-      if (shouldRefreshDestination && transfer) {
-        if (transfer.connectionType === 'taildrop') {
-          useTaildropStore.getState().addHistory({
-            id: result.transferId,
-            kind: 'sent',
-            fileName: transfer.fileName,
-            targetName: transfer.targetName ?? transfer.destinationPath,
-            status: 'completed',
-            createdAt: new Date().toISOString(),
-          });
-        } else if (transfer.direction === 'upload') {
-          useRemotePanelStore.getState().refresh();
-        } else {
-          useLocalPanelStore.getState().refresh();
-        }
-      } else if (!result.success && transfer?.connectionType === 'taildrop') {
+      if (transfer?.connectionType === 'taildrop') {
         useTaildropStore.getState().addHistory({
           id: result.transferId,
           kind: 'sent',
           fileName: transfer.fileName,
           targetName: transfer.targetName ?? transfer.destinationPath,
-          status: 'failed',
+          status: result.success ? 'completed' : 'failed',
           createdAt: new Date().toISOString(),
-          error: 'error' in result ? result.error : 'Taildrop send did not complete',
+          error: !result.success && 'error' in result ? result.error : undefined,
         });
+      }
+
+      // Auto-refresh the destination pane once a successful batch has finished.
+      if (shouldRefreshDestination && transfer && transfer.connectionType !== 'taildrop') {
+        if (transfer.direction === 'upload') {
+          useRemotePanelStore.getState().refresh();
+        } else {
+          useLocalPanelStore.getState().refresh();
+        }
       }
     });
     const unsubError = window.api.on('transfer:error', (data: unknown) => {
