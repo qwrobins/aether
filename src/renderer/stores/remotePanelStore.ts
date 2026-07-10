@@ -30,6 +30,9 @@ interface RemotePanelState {
   sortField: SortField;
   sortDirection: SortDirection;
   isLoading: boolean;
+  isLoadingMore: boolean;
+  continuationToken: string | null;
+  navigationGeneration: number;
   error: string | null;
 
   // Connection actions
@@ -45,6 +48,7 @@ interface RemotePanelState {
   navigateTo: (path: string) => Promise<void>;
   navigateUp: () => Promise<void>;
   refresh: () => Promise<void>;
+  loadMoreEntries: () => Promise<void>;
   selectFile: (path: string, multi?: boolean, shift?: boolean) => void;
   selectAll: () => void;
   clearSelection: () => void;
@@ -99,6 +103,7 @@ async function listRemoteEntries(
   activeProfile: ConnectionProfile,
   currentBucket: string | null,
   path: string,
+  continuationToken?: string,
 ) {
   if (activeProfile.type === 'sftp') {
     return window.api.invoke('sftp:list', activeConnectionId, path);
@@ -113,7 +118,13 @@ async function listRemoteEntries(
     if (!currentBucket) {
       throw new Error('Select an S3 bucket before listing objects');
     }
-    return window.api.invoke('s3:list-objects', activeConnectionId, currentBucket, path);
+    return window.api.invoke(
+      's3:list-objects',
+      activeConnectionId,
+      currentBucket,
+      path,
+      continuationToken,
+    );
   }
   throw new Error(`${activeProfile.type} browsing is not implemented yet`);
 }
@@ -134,6 +145,9 @@ const initialState = {
   sortField: 'name' as SortField,
   sortDirection: 'asc' as SortDirection,
   isLoading: false,
+  isLoadingMore: false,
+  continuationToken: null as string | null,
+  navigationGeneration: 0,
   error: null as string | null,
 };
 
@@ -141,12 +155,13 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   ...initialState,
 
   connect: async (profile: ConnectionProfile) => {
-    set({
+    set((state) => ({
       mode: 'connection',
       connectionStatus: 'connecting',
       connectionError: null,
       activeProfile: profile,
-    });
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
     try {
       let connectResult = await window.api.invoke('conn:connect', profile.id);
       let connectedProfile = profile;
@@ -221,15 +236,19 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         // Ignore disconnect errors
       }
     }
-    set({ ...initialState });
+    set((state) => ({
+      ...initialState,
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
   },
 
   activateTaildrop: () => {
-    set({
+    set((state) => ({
       ...initialState,
       mode: 'taildrop',
       connectionStatus: 'connected',
-    });
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
   },
 
   loadBuckets: async () => {
@@ -248,7 +267,15 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
   },
 
   selectBucket: async (bucket: string) => {
-    set({ currentBucket: bucket, currentPath: '', entries: [], selectedFiles: new Set(), selectionAnchor: null });
+    set((state) => ({
+      currentBucket: bucket,
+      currentPath: '',
+      entries: [],
+      continuationToken: null,
+      selectedFiles: new Set(),
+      selectionAnchor: null,
+      navigationGeneration: state.navigationGeneration + 1,
+    }));
     await get().navigateTo('');
   },
 
@@ -258,19 +285,37 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
 
     if (activeProfile.type === 's3' && !currentBucket) return;
 
-    set({ isLoading: true, error: null, selectedFiles: new Set(), selectionAnchor: null });
+    const navigationGeneration = get().navigationGeneration + 1;
+    set({
+      isLoading: true,
+      isLoadingMore: false,
+      continuationToken: null,
+      navigationGeneration,
+      error: null,
+      selectedFiles: new Set(),
+      selectionAnchor: null,
+    });
     try {
       const listing = await listRemoteEntries(activeConnectionId, activeProfile, currentBucket, path);
-      set({
-        currentPath: path,
-        entries: sortEntries(listing.entries, sortField, sortDirection),
-        isLoading: false,
-      });
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              currentPath: path,
+              entries: sortEntries(listing.entries, sortField, sortDirection),
+              continuationToken: listing.continuationToken ?? null,
+              isLoading: false,
+            }
+          : {},
+      );
     } catch (err) {
-      set({
-        error: err instanceof Error ? err.message : 'Failed to list directory',
-        isLoading: false,
-      });
+      set((state) =>
+        state.navigationGeneration === navigationGeneration
+          ? {
+              error: err instanceof Error ? err.message : 'Failed to list directory',
+              isLoading: false,
+            }
+          : {},
+      );
     }
   },
 
@@ -302,6 +347,75 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       await navigateTo(currentPath);
     } else {
       await loadBuckets();
+    }
+  },
+
+  loadMoreEntries: async () => {
+    const {
+      activeConnectionId,
+      activeProfile,
+      currentBucket,
+      currentPath,
+      continuationToken,
+      isLoadingMore,
+      navigationGeneration,
+    } = get();
+    if (
+      isLoadingMore ||
+      !continuationToken ||
+      !activeConnectionId ||
+      activeProfile?.type !== 's3' ||
+      !currentBucket
+    ) {
+      return;
+    }
+
+    set({ isLoadingMore: true, error: null });
+    try {
+      const listing = await listRemoteEntries(
+        activeConnectionId,
+        activeProfile,
+        currentBucket,
+        currentPath,
+        continuationToken,
+      );
+      set((state) => {
+        if (
+          state.activeConnectionId !== activeConnectionId ||
+          state.currentBucket !== currentBucket ||
+          state.currentPath !== currentPath ||
+          state.navigationGeneration !== navigationGeneration
+        ) {
+          return {};
+        }
+        const entriesByPath = new Map(
+          [...state.entries, ...listing.entries].map((entry) => [entry.path, entry]),
+        );
+        return {
+          entries: sortEntries(
+            [...entriesByPath.values()],
+            state.sortField,
+            state.sortDirection,
+          ),
+          continuationToken: listing.continuationToken ?? null,
+          isLoadingMore: false,
+        };
+      });
+    } catch (err) {
+      set((state) => {
+        if (
+          state.activeConnectionId !== activeConnectionId ||
+          state.currentBucket !== currentBucket ||
+          state.currentPath !== currentPath ||
+          state.navigationGeneration !== navigationGeneration
+        ) {
+          return {};
+        }
+        return {
+          error: err instanceof Error ? err.message : 'Failed to load more objects',
+          isLoadingMore: false,
+        };
+      });
     }
   },
 

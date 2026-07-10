@@ -6,6 +6,7 @@ import { useTransferEvents } from '../useTransferEvents';
 import { useTransferStore } from '@/stores/transferStore';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
+import { useTaildropStore } from '@/stores/taildropStore';
 import type { TransferItem } from '@shared/types/transfer';
 import type { IpcEventMap } from '@shared/types/ipc';
 
@@ -46,9 +47,10 @@ function mockEventSubscriptions(handlers: EventHandlers): void {
 
 describe('useTransferEvents', () => {
   beforeEach(() => {
-    useTransferStore.setState({ transfers: [] });
+    useTransferStore.getState().setTransfers([]);
     useLocalPanelStore.setState({ refresh: vi.fn() });
     useRemotePanelStore.setState({ refresh: vi.fn() });
+    useTaildropStore.setState({ history: [] });
   });
 
   it('subscribes to transfer events and cleans up listeners', () => {
@@ -144,6 +146,97 @@ describe('useTransferEvents', () => {
     expect(useTransferStore.getState().transfers[0].status).toBe('completed');
     expect(localRefresh).toHaveBeenCalledTimes(1);
     expect(remoteRefresh).not.toHaveBeenCalled();
+  });
+
+  it('refreshes once after the final transfer in a batch completes', () => {
+    const handlers: EventHandlers = {};
+    mockEventSubscriptions(handlers);
+    const remoteRefresh = vi.fn();
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.getState().setTransfers([
+      transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+      transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+    ]);
+    render(<HookHarness />);
+
+    handlers['transfer:complete']?.({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    expect(remoteRefresh).not.toHaveBeenCalled();
+
+    handlers['transfer:complete']?.({
+      transferId: 'two',
+      status: 'completed',
+      success: true,
+    });
+    expect(remoteRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes after a mixed-result batch finishes when at least one transfer succeeded', () => {
+    const handlers: EventHandlers = {};
+    mockEventSubscriptions(handlers);
+    const remoteRefresh = vi.fn();
+    useRemotePanelStore.setState({ refresh: remoteRefresh });
+    useTransferStore.getState().setTransfers([
+      transfer({ id: 'one', batchId: 'batch-1', status: 'active' }),
+      transfer({ id: 'two', batchId: 'batch-1', status: 'active' }),
+    ]);
+    render(<HookHarness />);
+
+    handlers['transfer:complete']?.({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    handlers['transfer:complete']?.({
+      transferId: 'two',
+      status: 'failed',
+      success: false,
+      error: 'failed',
+    });
+
+    expect(remoteRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('records each Taildrop batch result with its own completion status', () => {
+    const handlers: EventHandlers = {};
+    mockEventSubscriptions(handlers);
+    useTransferStore.getState().setTransfers([
+      transfer({
+        id: 'one',
+        batchId: 'batch-1',
+        connectionType: 'taildrop',
+        targetName: 'laptop',
+        status: 'active',
+      }),
+      transfer({
+        id: 'two',
+        batchId: 'batch-1',
+        connectionType: 'taildrop',
+        targetName: 'laptop',
+        status: 'active',
+      }),
+    ]);
+    render(<HookHarness />);
+
+    handlers['transfer:complete']?.({
+      transferId: 'one',
+      status: 'completed',
+      success: true,
+    });
+    handlers['transfer:complete']?.({
+      transferId: 'two',
+      status: 'failed',
+      success: false,
+      error: 'send failed',
+    });
+
+    expect(useTaildropStore.getState().history).toEqual([
+      expect.objectContaining({ id: 'two', status: 'failed', error: 'send failed' }),
+      expect.objectContaining({ id: 'one', status: 'completed', error: undefined }),
+    ]);
   });
 
   it('marks cancelled transfers without refreshing panes', () => {

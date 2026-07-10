@@ -34,6 +34,7 @@ function DirectionIcon({
 export function TransferItem({ transfer: t }: Props) {
   const [isRetrying, setIsRetrying] = useState(false);
   const addTransfer = useTransferStore((s) => s.addTransfer);
+  const addTransfers = useTransferStore((s) => s.addTransfers);
   const removeTransfer = useTransferStore((s) => s.removeTransfer);
 
   const percentage =
@@ -62,9 +63,7 @@ export function TransferItem({ transfer: t }: Props) {
 
       removeTransfer(t.id);
       if (Array.isArray(result)) {
-        for (const item of result) {
-          addTransfer(item);
-        }
+        addTransfers(result);
       } else {
         addTransfer({
           ...t,

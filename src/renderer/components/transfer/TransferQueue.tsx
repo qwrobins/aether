@@ -1,9 +1,12 @@
+import { useMemo } from 'react';
 import { useTransferStore } from '@/stores/transferStore';
 import { useUiStore } from '@/stores/uiStore';
 import { TransferItem } from './TransferItem';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChevronDown, ChevronUp, Trash2, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const VISIBLE_TRANSFER_LIMIT = 200;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -20,20 +23,47 @@ export function TransferQueue() {
   const { transferQueueExpanded, toggleTransferQueue } = useUiStore();
   const hasTransfers = transfers.length > 0;
 
-  const activeCount = transfers.filter((t) => t.status === 'active').length;
-  const queuedCount = transfers.filter((t) => t.status === 'queued').length;
-  const totalRemaining = transfers
-    .filter((t) => ['active', 'queued'].includes(t.status))
-    .reduce((sum, t) => sum + Math.max(0, t.size - t.bytesTransferred), 0);
+  const {
+    activeCount,
+    queuedCount,
+    totalRemaining,
+    activeTransfers,
+    terminalTransfers,
+  } = useMemo(() => {
+    const activeItems = [];
+    const terminalItems = [];
+    let active = 0;
+    let queued = 0;
+    let remaining = 0;
 
-  const activeTransfers = transfers.filter((t) =>
-    ['active', 'queued'].includes(t.status),
-  );
-  const terminalTransfers = transfers.filter((t) =>
-    ['completed', 'failed', 'cancelled'].includes(t.status),
-  );
+    for (const transfer of transfers) {
+      if (transfer.status === 'active' || transfer.status === 'queued') {
+        activeItems.push(transfer);
+        if (transfer.status === 'active') active++;
+        else queued++;
+        remaining += Math.max(0, transfer.size - transfer.bytesTransferred);
+      } else {
+        terminalItems.push(transfer);
+      }
+    }
+
+    return {
+      activeCount: active,
+      queuedCount: queued,
+      totalRemaining: remaining,
+      activeTransfers: activeItems,
+      terminalTransfers: terminalItems,
+    };
+  }, [transfers]);
   const hasTerminal = terminalTransfers.length > 0;
   const hasActive = activeTransfers.length > 0;
+  const visibleActiveTransfers = activeTransfers.slice(0, VISIBLE_TRANSFER_LIMIT);
+  const remainingSlots = Math.max(0, VISIBLE_TRANSFER_LIMIT - visibleActiveTransfers.length);
+  const visibleTerminalTransfers =
+    remainingSlots > 0 ? terminalTransfers.slice(-remainingSlots) : [];
+  const hasVisibleTerminal = visibleTerminalTransfers.length > 0;
+  const hiddenTransferCount =
+    transfers.length - visibleActiveTransfers.length - visibleTerminalTransfers.length;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden border-t border-border bg-card">
@@ -103,20 +133,25 @@ export function TransferQueue() {
           <div className="space-y-0 px-3 pb-3">
             {hasActive && (
               <div className="space-y-0.5">
-                {activeTransfers.map((t) => (
+                {visibleActiveTransfers.map((t) => (
                   <TransferItem key={t.id} transfer={t} />
                 ))}
               </div>
             )}
-            {hasTerminal && hasActive && (
+            {hasVisibleTerminal && hasActive && (
               <div className="my-1 h-px bg-border/40" />
             )}
-            {hasTerminal && (
+            {hasVisibleTerminal && (
               <div className="space-y-0.5">
-                {terminalTransfers.map((t) => (
+                {visibleTerminalTransfers.map((t) => (
                   <TransferItem key={t.id} transfer={t} />
                 ))}
               </div>
+            )}
+            {hiddenTransferCount > 0 && (
+              <p className="px-3 py-2 text-center font-mono text-[10px] text-muted-foreground">
+                {hiddenTransferCount} additional transfer{hiddenTransferCount === 1 ? '' : 's'} hidden
+              </p>
             )}
           </div>
         </ScrollArea>

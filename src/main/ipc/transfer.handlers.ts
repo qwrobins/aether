@@ -167,7 +167,8 @@ export function registerTransferHandlers(
       const enqueueTransfer = async (
         transferRequest: TransferRequest,
         size?: number,
-      ): Promise<string> => transferService.enqueue(transferRequest, s3Client, size);
+        batchId?: string,
+      ): Promise<string> => transferService.enqueue(transferRequest, s3Client, size, batchId);
 
       const rollbackQueuedTransfers = (transferIds: string[]) => {
         for (const transferId of transferIds) {
@@ -184,8 +185,9 @@ export function registerTransferHandlers(
         transferRequest: TransferRequest,
         transferIds: string[],
         size?: number,
+        batchId?: string,
       ): Promise<TransferItem> => {
-        const id = await enqueueTransfer(transferRequest, size);
+        const id = await enqueueTransfer(transferRequest, size, batchId);
         transferIds.push(id);
         const transfer = transferService.getTransfer(id);
         if (!transfer) {
@@ -209,6 +211,7 @@ export function registerTransferHandlers(
         try {
           const stat = await fs.stat(request.sourcePath);
           if (stat.isDirectory) {
+            const batchId = crypto.randomUUID();
             const items: TransferItem[] = [];
             const transferIds: string[] = [];
             const destBase = request.destinationPath.replace(/\/$/, '');
@@ -224,7 +227,12 @@ export function registerTransferHandlers(
                   destinationPath: subDest,
                   isDirectory: false,
                 };
-                const transfer = await enqueueTransferItem(subRequest, transferIds);
+                const transfer = await enqueueTransferItem(
+                  subRequest,
+                  transferIds,
+                  undefined,
+                  batchId,
+                );
                 items.push(transfer);
               }
             } catch (error) {
@@ -242,6 +250,7 @@ export function registerTransferHandlers(
       } else if (request.direction === 'download') {
         try {
           if (request.connectionType === 's3' && request.bucket && isDirectoryRequest(request)) {
+            const batchId = crypto.randomUUID();
             const prefix = normalizeS3Prefix(request.sourcePath);
             const items: TransferItem[] = [];
             const transferIds: string[] = [];
@@ -262,7 +271,12 @@ export function registerTransferHandlers(
                   destinationPath: subDest,
                   isDirectory: false,
                 };
-                const transfer = await enqueueTransferItem(subRequest, transferIds, size);
+                const transfer = await enqueueTransferItem(
+                  subRequest,
+                  transferIds,
+                  size,
+                  batchId,
+                );
                 items.push(transfer);
               }
             } catch (error) {
@@ -279,6 +293,7 @@ export function registerTransferHandlers(
             const client = service.getClient(request.connectionId);
             const stat = await client.stat(request.sourcePath);
             if (stat.isDirectory) {
+              const batchId = crypto.randomUUID();
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
               const destBase = getDownloadDestinationBase(request.destinationPath);
@@ -296,7 +311,12 @@ export function registerTransferHandlers(
                     destinationPath: subDest,
                     isDirectory: false,
                   };
-                  const transfer = await enqueueTransferItem(subRequest, transferIds, size);
+                  const transfer = await enqueueTransferItem(
+                    subRequest,
+                    transferIds,
+                    size,
+                    batchId,
+                  );
                   items.push(transfer);
                 }
               } catch (error) {
@@ -310,6 +330,7 @@ export function registerTransferHandlers(
           } else if (MOUNTED_NETWORK_TYPES.has(request.connectionType)) {
             const sourceStat = await fs.stat(request.sourcePath);
             if (sourceStat.isDirectory) {
+              const batchId = crypto.randomUUID();
               const items: TransferItem[] = [];
               const transferIds: string[] = [];
               const destBase = getDownloadDestinationBase(request.destinationPath);
@@ -327,7 +348,12 @@ export function registerTransferHandlers(
                     isDirectory: false,
                   };
                   const sourceFileStat = await fs.stat(sourcePath);
-                  const transfer = await enqueueTransferItem(subRequest, transferIds, sourceFileStat.size);
+                  const transfer = await enqueueTransferItem(
+                    subRequest,
+                    transferIds,
+                    sourceFileStat.size,
+                    batchId,
+                  );
                   items.push(transfer);
                 }
               } catch (error) {

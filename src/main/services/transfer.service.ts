@@ -72,6 +72,7 @@ export class TransferService {
   private sftpClients: Map<string, SftpTransferClient> = new Map();
   private rsyncClients: Map<string, SftpTransferClient> = new Map();
   private terminalTransfers: Set<string> = new Set();
+  private lastProgressEmittedAt: Map<string, number> = new Map();
   private sftpClientFactory?: SftpClientFactory;
   private rsyncClientFactory?: SftpClientFactory;
   private taildropSender?: TaildropSender;
@@ -109,10 +110,12 @@ export class TransferService {
     request: TransferRequest,
     s3Client?: S3Client,
     size?: number,
+    batchId?: string,
   ): Promise<string> {
     const id = crypto.randomUUID();
     const item: TransferItem = {
       id,
+      batchId,
       fileName: path.basename(request.sourcePath),
       ...request,
       tempPath:
@@ -506,6 +509,7 @@ export class TransferService {
     item.completedAt = new Date().toISOString();
     item.bytesTransferred = item.size;
     item.speed = 0;
+    this.emitProgress(item.id, item.size, item.size, 0, true);
     this.terminalTransfers.add(item.id);
     await this.cleanupTransferResources(item.id);
     this.emitComplete({
@@ -566,6 +570,7 @@ export class TransferService {
     }
 
     this.abortControllers.delete(id);
+    this.lastProgressEmittedAt.delete(id);
     await this.closeSftpTransferClient(id, 'disconnect');
     if (this.rsyncClients.has(id)) {
       await this.closeRsyncTransferClient(id, 'disconnect');
@@ -697,7 +702,15 @@ export class TransferService {
     bytes: number,
     total: number,
     speed: number,
+    force = false,
   ): void {
+    const now = Date.now();
+    const lastEmittedAt = this.lastProgressEmittedAt.get(id) ?? 0;
+    const isTerminalValue = total > 0 && bytes >= total;
+    if (!force && bytes > 0 && !isTerminalValue && now - lastEmittedAt < 100) {
+      return;
+    }
+    this.lastProgressEmittedAt.set(id, now);
     this.window?.webContents.send(IpcChannels.TRANSFER_PROGRESS, {
       transferId: id,
       bytesTransferred: bytes,

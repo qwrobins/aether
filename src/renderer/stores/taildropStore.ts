@@ -92,7 +92,7 @@ export const useTaildropStore = create<TaildropState>((set, get) => ({
   },
 
   sendFiles: async (target, files) => {
-    const addTransfer = useTransferStore.getState().addTransfer;
+    const { addTransfer, addTransfers } = useTransferStore.getState();
     const failures: string[] = [];
     for (const file of files) {
       if (file.isDirectory) {
@@ -122,7 +122,7 @@ export const useTaildropStore = create<TaildropState>((set, get) => ({
       try {
         const result = await window.api.invoke('transfer:start', request);
         if (Array.isArray(result)) {
-          for (const item of result) addTransfer(item);
+          addTransfers(result);
         } else {
           addTransfer(itemFromTransfer(result, request, file.name, file.size ?? 0));
         }

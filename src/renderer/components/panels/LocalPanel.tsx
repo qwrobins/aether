@@ -67,7 +67,7 @@ export function LocalPanel() {
           useRemotePanelStore.getState();
         if (!activeConnectionId || !activeProfile) return;
 
-        const addTransfer = useTransferStore.getState().addTransfer;
+        const { addTransfer, addTransfers } = useTransferStore.getState();
         for (const entry of payload.entries) {
           const request: TransferRequest = {
             sourcePath: entry.path,
@@ -81,9 +81,7 @@ export function LocalPanel() {
 
           const result = await window.api.invoke('transfer:start', request);
           if (Array.isArray(result)) {
-            for (const item of result) {
-              addTransfer(item);
-            }
+            addTransfers(result);
           } else {
             addTransfer({
               id: result,
@@ -176,11 +174,9 @@ export function LocalPanel() {
       };
 
       const result = await window.api.invoke('transfer:start', request);
-      const addTransfer = useTransferStore.getState().addTransfer;
+      const { addTransfer, addTransfers } = useTransferStore.getState();
       if (Array.isArray(result)) {
-        for (const item of result) {
-          addTransfer(item);
-        }
+        addTransfers(result);
       } else {
         addTransfer({
           id: result,
@@ -254,6 +250,7 @@ export function LocalPanel() {
       )}
 
       <FileList
+        listKey={currentPath}
         entries={entries}
         selectedFiles={selectedFiles}
         isLoading={isLoading}

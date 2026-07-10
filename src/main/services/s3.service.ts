@@ -173,6 +173,7 @@ export class S3Service {
     connectionId: string,
     bucket: string,
     prefix: string,
+    continuationToken?: string,
   ): Promise<DirectoryListing> {
     const client = this.getClient(connectionId);
     const result = await client.send(
@@ -180,6 +181,8 @@ export class S3Service {
         Bucket: bucket,
         Prefix: prefix,
         Delimiter: '/',
+        MaxKeys: 1000,
+        ContinuationToken: continuationToken,
       }),
     );
 
@@ -221,7 +224,12 @@ export class S3Service {
     });
 
     const parentPath = prefix ? prefix.replace(/[^/]+\/$/, '') : null;
-    return { path: prefix, entries, parentPath };
+    return {
+      path: prefix,
+      entries,
+      parentPath,
+      continuationToken: result.IsTruncated ? result.NextContinuationToken : undefined,
+    };
   }
 
   async *walkObjectKeysRecursive(
@@ -290,26 +298,23 @@ export class S3Service {
     prefix: string,
   ): Promise<void> {
     const normPrefix = normalizeRecursivePrefix(prefix);
-    const keysToDelete: string[] = [];
-    let continuationToken: string | undefined;
-
-    do {
+    let hasObjects = true;
+    while (hasObjects) {
       const result = await client.send(
         new ListObjectsV2Command({
           Bucket: bucket,
           Prefix: normPrefix,
           MaxKeys: 1000,
-          ContinuationToken: continuationToken,
         }),
       );
-      for (const obj of result.Contents || []) {
-        if (obj.Key) keysToDelete.push(obj.Key);
+      let batch = (result.Contents || [])
+        .map((object) => object.Key)
+        .filter((key): key is string => Boolean(key));
+      if (batch.length === 0) {
+        hasObjects = false;
+        continue;
       }
-      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
-    } while (continuationToken);
 
-    for (let i = 0; i < keysToDelete.length; i += 1000) {
-      let batch = keysToDelete.slice(i, i + 1000);
       const maxRetries = 3;
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -321,9 +326,9 @@ export class S3Service {
         );
 
         if (response.Errors && response.Errors.length > 0) {
-            const failedKeys = response.Errors
-              .filter((e) => e.Key)
-              .map((e) => e.Key as string);
+          const failedKeys = response.Errors
+            .filter((e) => e.Key)
+            .map((e) => e.Key as string);
           const errorDetails = response.Errors
             .map((e) => `${e.Key}: ${e.Code} - ${e.Message}`)
             .join('; ');

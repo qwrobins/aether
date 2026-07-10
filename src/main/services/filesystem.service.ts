@@ -14,6 +14,7 @@ import { shell } from 'electron';
 import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/filesystem';
 
 const execFileAsync = promisify(execFile);
+const DIRECTORY_STAT_CONCURRENCY = 32;
 
 interface RecursiveListOptions {
   maxFiles?: number;
@@ -29,29 +30,37 @@ export class FilesystemService {
   async readDirectory(dirPath: string): Promise<DirectoryListing> {
     const dirents = await readdir(dirPath, { withFileTypes: true });
 
-    const entries: FileEntry[] = await Promise.all(
-      dirents.map(async (dirent) => {
-        const fullPath = join(dirPath, dirent.name);
-        try {
-          const stats = await fsStat(fullPath);
-          return {
-            name: dirent.name,
-            path: fullPath,
-            size: dirent.isDirectory() ? 0 : stats.size,
-            isDirectory: dirent.isDirectory(),
-            modifiedAt: stats.mtime.toISOString(),
-          };
-        } catch {
-          return {
-            name: dirent.name,
-            path: fullPath,
-            size: 0,
-            isDirectory: dirent.isDirectory(),
-            modifiedAt: new Date().toISOString(),
-          };
+    const entries = new Array<FileEntry>(dirents.length);
+    let nextIndex = 0;
+    const workers = Array.from(
+      { length: Math.min(DIRECTORY_STAT_CONCURRENCY, dirents.length) },
+      async () => {
+        while (nextIndex < dirents.length) {
+          const index = nextIndex++;
+          const dirent = dirents[index];
+          const fullPath = join(dirPath, dirent.name);
+          try {
+            const stats = await fsStat(fullPath);
+            entries[index] = {
+              name: dirent.name,
+              path: fullPath,
+              size: dirent.isDirectory() ? 0 : stats.size,
+              isDirectory: dirent.isDirectory(),
+              modifiedAt: stats.mtime.toISOString(),
+            };
+          } catch {
+            entries[index] = {
+              name: dirent.name,
+              path: fullPath,
+              size: 0,
+              isDirectory: dirent.isDirectory(),
+              modifiedAt: new Date().toISOString(),
+            };
+          }
         }
-      }),
+      },
     );
+    await Promise.all(workers);
 
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) {

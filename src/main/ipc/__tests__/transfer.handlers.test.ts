@@ -3,10 +3,16 @@ import { IpcChannels } from '@shared/constants/channels';
 import type { TransferItem, TransferRequest } from '@shared/types/transfer';
 
 const transferItems = new Map<string, TransferItem>();
-const enqueue = vi.fn(async (request: TransferRequest, _s3Client?: unknown, _sftpClient?: unknown, size?: number) => {
+const enqueue = vi.fn(async (
+  request: TransferRequest,
+  _s3Client?: unknown,
+  size?: number,
+  batchId?: string,
+) => {
   const id = `transfer-${enqueue.mock.calls.length}`;
   transferItems.set(id, {
     id,
+    batchId,
     fileName: request.sourcePath.split('/').pop() ?? request.sourcePath,
     ...request,
     size: size ?? 0,
@@ -32,6 +38,10 @@ const listObjectKeysRecursive = vi.fn();
 const getS3Client = vi.fn(() => ({ kind: 's3-client' }));
 const getSftpClient = vi.fn(() => ({ kind: 'sftp-client', stat: vi.fn() }));
 const listSftpFilesRecursive = vi.fn();
+const getRsyncClient = vi.fn(() => ({ kind: 'rsync-client', stat: vi.fn() }));
+const listRsyncFilesRecursive = vi.fn();
+const listNetworkFilesystem = vi.fn();
+const assertNetworkTransferPath = vi.fn();
 
 async function* fromMockedList<T>(
   mock: (...args: unknown[]) => Promise<T[]>,
@@ -85,10 +95,18 @@ vi.mock('../sftp.handlers', () => ({
 
 vi.mock('../rsync.handlers', () => ({
   rsyncService: {
-    getClient: vi.fn(() => ({ kind: 'rsync-client', stat: vi.fn() })),
+    getClient: getRsyncClient,
     createTransferClient: vi.fn(async () => ({ kind: 'transfer-rsync-client' })),
-    listFilesRecursive: vi.fn(),
-    walkFilesRecursive: vi.fn(),
+    listFilesRecursive: listRsyncFilesRecursive,
+    walkFilesRecursive: (connectionId: string, path: string) =>
+      fromMockedList(listRsyncFilesRecursive, connectionId, path),
+  },
+}));
+
+vi.mock('../network-filesystem.handlers', () => ({
+  networkFilesystemService: {
+    list: listNetworkFilesystem,
+    assertTransferPath: assertNetworkTransferPath,
   },
 }));
 
@@ -102,6 +120,14 @@ function createRequest(overrides: Partial<TransferRequest> = {}): TransferReques
     bucket: 'aether',
     ...overrides,
   };
+}
+
+function expectSharedBatch(result: unknown, expectedCount: number): void {
+  expect(Array.isArray(result)).toBe(true);
+  const items = result as TransferItem[];
+  expect(items).toHaveLength(expectedCount);
+  expect(items[0].batchId).toBeTypeOf('string');
+  expect(items.every((item) => item.batchId === items[0].batchId)).toBe(true);
 }
 
 async function createIpcHandlerSetup() {
@@ -135,6 +161,13 @@ describe('registerTransferHandlers', () => {
     getSftpClient.mockReset();
     getSftpClient.mockImplementation(() => ({ kind: 'sftp-client', stat: vi.fn() }));
     listSftpFilesRecursive.mockReset();
+    getRsyncClient.mockReset();
+    getRsyncClient.mockImplementation(() => ({ kind: 'rsync-client', stat: vi.fn() }));
+    listRsyncFilesRecursive.mockReset();
+    listNetworkFilesystem.mockReset();
+    listNetworkFilesystem.mockResolvedValue({ entries: [] });
+    assertNetworkTransferPath.mockReset();
+    assertNetworkTransferPath.mockResolvedValue(undefined);
   });
 
   it('expands local directory uploads into per-file transfers', async () => {
@@ -157,7 +190,7 @@ describe('registerTransferHandlers', () => {
       sourcePath: '/tmp/source/nested/b.txt',
       destinationPath: '/remote/base/nested/b.txt',
     });
-    expect(Array.isArray(result)).toBe(true);
+    expectSharedBatch(result, 2);
     expect((result as TransferItem[]).map((item) => item.id)).toEqual(['transfer-1', 'transfer-2']);
   });
 
@@ -169,7 +202,7 @@ describe('registerTransferHandlers', () => {
 
     const { handlers } = await createIpcHandlerSetup();
 
-    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 's3',
       sourcePath: 'photos/2026',
@@ -185,6 +218,7 @@ describe('registerTransferHandlers', () => {
     });
     expect(enqueue.mock.calls[0][2]).toBe(12);
     expect(enqueue.mock.calls[1][2]).toBe(30);
+    expectSharedBatch(result, 2);
   });
 
   it('skips S3 directory marker entries during prefix downloads', async () => {
@@ -370,7 +404,7 @@ describe('registerTransferHandlers', () => {
 
     const { handlers } = await createIpcHandlerSetup();
 
-    await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
       direction: 'download',
       connectionType: 'sftp',
       sourcePath: '/remote/root',
@@ -387,6 +421,49 @@ describe('registerTransferHandlers', () => {
       sourcePath: '/remote/root/deep/asset.bin',
       destinationPath: '/local/root/deep/asset.bin',
     });
+    expectSharedBatch(result, 2);
+  });
+
+  it('assigns one batch id to expanded rsync directory downloads', async () => {
+    const client = { kind: 'rsync-client', stat: vi.fn().mockResolvedValue({ isDirectory: true }) };
+    getRsyncClient.mockReturnValue(client);
+    listRsyncFilesRecursive.mockResolvedValue([
+      { path: '/remote/root/file.txt', relativePath: 'file.txt', size: 4 },
+      { path: '/remote/root/deep/asset.bin', relativePath: 'deep/asset.bin', size: 8 },
+    ]);
+    const { handlers } = await createIpcHandlerSetup();
+
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 'rsync',
+      sourcePath: '/remote/root',
+      destinationPath: '/local/root/',
+      bucket: undefined,
+    }));
+
+    expectSharedBatch(result, 2);
+  });
+
+  it('assigns one batch id to expanded mounted filesystem downloads', async () => {
+    stat
+      .mockResolvedValueOnce({ isDirectory: true })
+      .mockResolvedValueOnce({ isDirectory: false, size: 4 })
+      .mockResolvedValueOnce({ isDirectory: false, size: 8 });
+    listFilesRecursive.mockResolvedValue([
+      { path: '/mnt/share/file.txt', relativePath: 'file.txt' },
+      { path: '/mnt/share/deep/asset.bin', relativePath: 'deep/asset.bin' },
+    ]);
+    const { handlers } = await createIpcHandlerSetup();
+
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 'smb',
+      sourcePath: '/mnt/share',
+      destinationPath: '/local/share/',
+      bucket: undefined,
+    }));
+
+    expectSharedBatch(result, 2);
   });
 
   it('skips SFTP directory marker entries during directory downloads', async () => {

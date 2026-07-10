@@ -65,6 +65,9 @@ function resetStore(): void {
     sortField: 'name',
     sortDirection: 'asc',
     isLoading: false,
+    isLoadingMore: false,
+    continuationToken: null,
+    navigationGeneration: 0,
     error: null,
   });
 }
@@ -107,6 +110,129 @@ describe('useRemotePanelStore', () => {
       currentPath: '',
     });
     expect(useRemotePanelStore.getState().entries.map((item: FileEntry) => item.name)).toEqual(['docs', 'b.txt']);
+  });
+
+  it('loads additional S3 object pages without duplicating entries', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'albums/',
+      continuationToken: 'page-2',
+      entries: [fileEntry({ name: 'a.jpg', path: 'albums/a.jpg' })],
+    });
+    mockInvoke(async (channel, ...args) => {
+      if (channel === 's3:list-objects') {
+        expect(args).toEqual(['s3-1', 'photos', 'albums/', 'page-2']);
+        return {
+          path: 'albums/',
+          parentPath: '',
+          entries: [
+            fileEntry({ name: 'a.jpg', path: 'albums/a.jpg' }),
+            fileEntry({ name: 'b.jpg', path: 'albums/b.jpg' }),
+          ],
+        } satisfies DirectoryListing;
+      }
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    await useRemotePanelStore.getState().loadMoreEntries();
+
+    expect(useRemotePanelStore.getState().entries.map((entry) => entry.path)).toEqual([
+      'albums/a.jpg',
+      'albums/b.jpg',
+    ]);
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      continuationToken: null,
+      isLoadingMore: false,
+    });
+  });
+
+  it('ignores stale S3 page failures after navigation changes', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'old/',
+      continuationToken: 'page-2',
+      entries: [],
+    });
+    let rejectRequest: (reason: Error) => void = () => undefined;
+    mockInvoke(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }),
+    );
+
+    const loading = useRemotePanelStore.getState().loadMoreEntries();
+    useRemotePanelStore.setState({
+      currentPath: 'new/',
+      isLoadingMore: true,
+      error: null,
+    });
+    rejectRequest(new Error('old request failed'));
+    await loading;
+
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      currentPath: 'new/',
+      isLoadingMore: true,
+      error: null,
+    });
+  });
+
+  it('ignores an old S3 page after navigating away and back to the same prefix', async () => {
+    useRemotePanelStore.setState({
+      activeConnectionId: 's3-1',
+      activeProfile: s3Profile(),
+      connectionStatus: 'connected',
+      currentBucket: 'photos',
+      currentPath: 'albums/',
+      continuationToken: 'old-page-2',
+      entries: [fileEntry({ name: 'old.jpg', path: 'albums/old.jpg' })],
+    });
+    let resolveOldPage: ((listing: DirectoryListing) => void) | undefined;
+    mockInvoke(async (channel, ...args) => {
+      if (channel !== 's3:list-objects') {
+        return Promise.reject(new Error(`Unhandled channel ${channel}`));
+      }
+      const path = args[2];
+      const token = args[3];
+      if (token === 'old-page-2') {
+        return new Promise<DirectoryListing>((resolve) => {
+          resolveOldPage = resolve;
+        });
+      }
+      if (path === 'other/') {
+        return { path: 'other/', parentPath: '', entries: [] } satisfies DirectoryListing;
+      }
+      return {
+        path: 'albums/',
+        parentPath: '',
+        entries: [fileEntry({ name: 'fresh.jpg', path: 'albums/fresh.jpg' })],
+        continuationToken: 'fresh-page-2',
+      } satisfies DirectoryListing;
+    });
+
+    const oldPage = useRemotePanelStore.getState().loadMoreEntries();
+    await useRemotePanelStore.getState().navigateTo('other/');
+    await useRemotePanelStore.getState().navigateTo('albums/');
+    if (!resolveOldPage) {
+      throw new Error('Expected the old S3 page request to be pending');
+    }
+    resolveOldPage({
+      path: 'albums/',
+      parentPath: '',
+      entries: [fileEntry({ name: 'stale.jpg', path: 'albums/stale.jpg' })],
+    });
+    await oldPage;
+
+    expect(useRemotePanelStore.getState().entries.map((entry) => entry.path)).toEqual([
+      'albums/fresh.jpg',
+    ]);
+    expect(useRemotePanelStore.getState().continuationToken).toBe('fresh-page-2');
   });
 
   it('connects an SFTP profile and navigates to its default path', async () => {
@@ -205,7 +331,10 @@ describe('useRemotePanelStore', () => {
 
     const connect = useRemotePanelStore.getState().connect(sftpProfile());
     useRemotePanelStore.getState().activateTaildrop();
-    resolveConnect?.({ status: 'connected' });
+    if (!resolveConnect) {
+      throw new Error('Expected the SFTP connection request to be pending');
+    }
+    resolveConnect({ status: 'connected' });
     await connect;
 
     expect(window.api.invoke).toHaveBeenCalledWith('conn:disconnect', 'sftp-1');
