@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.24](https://github.com/qwrobins/aether/compare/v0.1.23...v0.1.24) (2026-07-10)
+
+### Performance
+
+* perf: scale large listings and transfer batches ([#45](https://github.com/qwrobins/aether/pull/45))
+  * throttle transfer progress IPC and batch renderer inserts/refreshes
+  * cap transfer queue rendering and paginate file list/grid views
+  * bound local directory stat concurrency
+  * add cursor-based S3 browsing and page-at-a-time prefix deletion
+  * protect paginated S3 state from stale responses
+  * bump Aether to 0.1.24
+
 ## [0.1.23](https://github.com/qwrobins/aether/compare/v0.1.22...v0.1.23) (2026-07-10)
 
 ### Bug Fixes
