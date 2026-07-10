@@ -9,6 +9,7 @@ const writeStore = vi.fn();
 vi.mock('electron', () => ({
   safeStorage: {
     isEncryptionAvailable: vi.fn(() => true),
+    getSelectedStorageBackend: vi.fn(() => 'gnome_libsecret'),
     encryptString,
     decryptString,
   },
@@ -167,12 +168,13 @@ describe('ConnectionService', () => {
     expect(saved.name).toBe('Renamed');
     expect(saved.sourceAccessKeyId).not.toBeUndefined();
     expect(saved.sourceSecretAccessKey).not.toBeUndefined();
-    expect(decryptString).toHaveBeenCalled();
-    expect(encryptString).toHaveBeenCalledWith('source-key');
-    expect(encryptString).toHaveBeenCalledWith('source-secret');
+    expect(saved.sourceAccessKeyId).toBe(existing.sourceAccessKeyId);
+    expect(saved.sourceSecretAccessKey).toBe(existing.sourceSecretAccessKey);
+    expect(decryptString).toHaveBeenCalledTimes(2);
+    expect(encryptString).not.toHaveBeenCalled();
   });
 
-  it('re-encrypts stored secrets before preserving them when decryption fails', async () => {
+  it('rejects stored secrets that cannot be decrypted during metadata-only updates', async () => {
     const existing = {
       id: 'conn-bad-secret',
       name: 'Existing',
@@ -186,25 +188,23 @@ describe('ConnectionService', () => {
       updatedAt: '2026-03-07T10:00:00.000Z',
     } as SftpConnectionProfile;
 
+    readStore.mockReturnValue({ connections: [existing] });
     decryptString.mockImplementationOnce(() => {
       throw new Error('decrypt failed');
     });
-    readStore.mockReturnValue({ connections: [existing] });
 
     const { ConnectionService } = await import('../connection.service');
     const service = new ConnectionService();
-    service.save({
-      ...service.list()[0],
-      name: 'Renamed',
-    });
-
-    const saved = writeStore.mock.calls[0][0].connections[0] as SftpConnectionProfile;
-    expect(saved.password).not.toBe(existing.password);
-    expect(encryptString).toHaveBeenCalledWith(existing.password);
-    expect(encryptString).not.toHaveBeenCalledWith('hunter2');
+    expect(() =>
+      service.save({
+        ...service.list()[0],
+        name: 'Renamed',
+      }),
+    ).toThrow('Failed to preserve stored credential field "password"');
+    expect(writeStore).not.toHaveBeenCalled();
   });
 
-  it('still returns legacy plaintext secrets from getById when decryption fails', async () => {
+  it('rejects legacy plaintext secrets when decryption fails', async () => {
     const existing = {
       id: 'conn-legacy',
       name: 'Legacy',
@@ -226,7 +226,9 @@ describe('ConnectionService', () => {
     const { ConnectionService } = await import('../connection.service');
     const service = new ConnectionService();
 
-    expect((service.getById('conn-legacy') as SftpConnectionProfile | undefined)?.password).toBe('legacy-secret');
+    expect(() => service.getById('conn-legacy')).toThrow(
+      'Failed to decrypt stored credential field "password"',
+    );
   });
 
   it('clears existing secrets when updating with empty string fields', async () => {

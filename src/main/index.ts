@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage } from 'electron';
+import { app, BrowserWindow, nativeImage, session } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
@@ -91,7 +91,7 @@ const createWindow = () => {
   });
 
   try {
-    registerAllIpcHandlers(mainWindow);
+    registerAllIpcHandlers(mainWindow, isAllowedAppNavigation);
     console.log('[Aether] IPC handlers registered');
   } catch (err) {
     console.error('[Aether] Failed to register IPC handlers:', err);
@@ -109,7 +109,13 @@ const createWindow = () => {
   });
 };
 
-app.on('ready', createWindow);
+app.whenReady().then(() => {
+  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false);
+  });
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

@@ -148,14 +148,43 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
       activeProfile: profile,
     });
     try {
-      await window.api.invoke('conn:connect', profile.id);
+      let connectResult = await window.api.invoke('conn:connect', profile.id);
+      let connectedProfile = profile;
+      if (connectResult.status === 'host-key-untrusted') {
+        if (profile.type !== 'sftp' && profile.type !== 'rsync') {
+          throw new Error('SSH host key verification is not supported for this connection type');
+        }
+        const trusted = window.confirm(
+          `Trust SSH host key for ${profile.name}?\n\n${connectResult.fingerprint}\n\n` +
+            'Only continue if this fingerprint matches the server administrator\'s value.',
+        );
+        if (!trusted) {
+          throw new Error('SSH host key was not trusted');
+        }
+
+        connectedProfile = {
+          ...profile,
+          hostKeyFingerprint: connectResult.fingerprint,
+        };
+        await window.api.invoke('conn:save', connectedProfile);
+        connectResult = await window.api.invoke('conn:connect', profile.id);
+        if (connectResult.status !== 'connected') {
+          throw new Error('SSH host key trust could not be established');
+        }
+      }
       const current = get();
       if (current.mode !== 'connection' || current.activeProfile?.id !== profile.id) {
+        try {
+          await window.api.invoke('conn:disconnect', profile.id);
+        } catch {
+          // The active view has already changed, so cleanup failures are non-fatal.
+        }
         return;
       }
       set({
         connectionStatus: 'connected',
         activeConnectionId: profile.id,
+        activeProfile: connectedProfile,
       });
       if (profile.type === 's3') {
         await get().loadBuckets();

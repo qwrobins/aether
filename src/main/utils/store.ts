@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { chmodSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { app } from 'electron';
 
@@ -33,5 +33,9 @@ export function writeStore(data: StoreSchema): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf-8');
+  writeFileSync(storePath, JSON.stringify(data, null, 2), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  chmodSync(storePath, 0o600);
 }

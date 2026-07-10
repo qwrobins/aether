@@ -29,21 +29,71 @@ function assertRecursiveLimit(count: number, maxFiles: number | undefined): void
   }
 }
 
+function formatHostKeyFingerprint(hashedKey: string): string {
+  const digest = Buffer.from(hashedKey, 'hex').toString('base64').replace(/=+$/, '');
+  return `SHA256:${digest}`;
+}
+
+export class UntrustedSshHostKeyError extends Error {
+  constructor(public readonly fingerprint: string) {
+    super(`SSH host key is not trusted: ${fingerprint}`);
+    this.name = 'UntrustedSshHostKeyError';
+  }
+}
+
 export class SftpService {
   private clients: Map<string, SftpClient> = new Map();
   private profiles: Map<string, SftpConnectionProfile> = new Map();
 
   private async createClient(profile: SftpConnectionProfile): Promise<SftpClient> {
     const client = new SftpClient();
-    await client.connect(await this.buildConfig(profile));
-    return client;
+    let observedFingerprint: string | undefined;
+    const expectedFingerprint = profile.hostKeyFingerprint?.trim();
+    const config = await this.buildConfig(profile, (fingerprint) => {
+      observedFingerprint = fingerprint;
+    });
+
+    try {
+      await client.connect(config);
+      return client;
+    } catch (error) {
+      try {
+        await client.end();
+      } catch {
+        // The rejected handshake may already have closed the client.
+      }
+
+      if (observedFingerprint && !expectedFingerprint) {
+        throw new UntrustedSshHostKeyError(observedFingerprint);
+      }
+      if (
+        observedFingerprint &&
+        expectedFingerprint &&
+        observedFingerprint !== expectedFingerprint
+      ) {
+        throw new Error(
+          `SSH host key mismatch. Expected ${expectedFingerprint}, received ${observedFingerprint}.`,
+        );
+      }
+      throw error;
+    }
   }
 
-  private async buildConfig(profile: SftpConnectionProfile): Promise<SftpClient.ConnectOptions> {
+  private async buildConfig(
+    profile: SftpConnectionProfile,
+    onFingerprint: (fingerprint: string) => void,
+  ): Promise<SftpClient.ConnectOptions> {
+    const expectedFingerprint = profile.hostKeyFingerprint?.trim();
     const config: SftpClient.ConnectOptions = {
       host: profile.host,
       port: profile.port || 22,
       username: profile.username,
+      hostHash: 'sha256',
+      hostVerifier: (hashedKey: string) => {
+        const fingerprint = formatHostKeyFingerprint(hashedKey);
+        onFingerprint(fingerprint);
+        return Boolean(expectedFingerprint && fingerprint === expectedFingerprint);
+      },
     };
 
     if (profile.authMethod === 'password' && profile.password) {
@@ -60,6 +110,7 @@ export class SftpService {
   }
 
   async connect(connectionId: string, profile: SftpConnectionProfile): Promise<void> {
+    await this.disconnect(connectionId);
     const client = await this.createClient(profile);
     this.clients.set(connectionId, client);
     this.profiles.set(connectionId, profile);
@@ -67,11 +118,15 @@ export class SftpService {
 
   async disconnect(connectionId: string): Promise<void> {
     const client = this.clients.get(connectionId);
-    if (client) {
-      await client.end();
-      this.clients.delete(connectionId);
-    }
+    this.clients.delete(connectionId);
     this.profiles.delete(connectionId);
+    if (client) {
+      try {
+        await client.end();
+      } catch (error) {
+        console.warn(`[Aether] Failed to close SFTP connection ${connectionId}:`, error);
+      }
+    }
   }
 
   getClient(connectionId: string): SftpClient {

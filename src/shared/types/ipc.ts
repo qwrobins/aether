@@ -1,5 +1,9 @@
 import type { FileEntry, DirectoryListing, DriveInfo } from './filesystem';
-import type { ConnectionProfile, RedactedConnectionProfile } from './connection';
+import type {
+  ConnectionConnectResult,
+  ConnectionProfile,
+  RedactedConnectionProfile,
+} from './connection';
 import type {
   TransferRequest,
   TransferItem,
@@ -68,7 +72,7 @@ export interface IpcInvokeMap {
   'conn:delete': { args: [id: string]; return: void };
   'conn:list': { args: []; return: RedactedConnectionProfile[] };
   'conn:test': { args: [profile: ConnectionProfile]; return: boolean };
-  'conn:connect': { args: [id: string]; return: { status: string } };
+  'conn:connect': { args: [id: string]; return: ConnectionConnectResult };
   'conn:disconnect': { args: [id: string]; return: void };
 
   // Transfers

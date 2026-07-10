@@ -39,6 +39,7 @@ const SFTP_DEFAULTS: Record<string, string> = {
   privateKeyPath: '',
   passphrase: '',
   defaultPath: '',
+  hostKeyFingerprint: '',
 };
 
 const NETWORK_DEFAULTS: Record<string, string> = {
@@ -56,6 +57,7 @@ const NETWORK_DEFAULTS: Record<string, string> = {
   port: '',
   sshPort: '22',
   module: '',
+  hostKeyFingerprint: '',
   accountName: '',
   accountKey: '',
   sasToken: '',

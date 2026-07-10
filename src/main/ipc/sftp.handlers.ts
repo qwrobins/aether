@@ -1,10 +1,10 @@
-import { IpcMain } from 'electron';
 import { SftpService } from '../services/sftp.service';
 import { IpcChannels } from '@shared/constants/channels';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 export const sftpService = new SftpService();
 
-export function registerSftpHandlers(ipcMain: IpcMain): void {
+export function registerSftpHandlers(ipcMain: IpcMainHandle): void {
   ipcMain.handle(IpcChannels.SFTP_LIST, async (_event, connectionId: string, path: string) => {
     return sftpService.list(connectionId, path);
   });

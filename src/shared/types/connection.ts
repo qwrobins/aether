@@ -50,6 +50,7 @@ export interface SftpConnectionProfile extends BaseConnectionProfile {
   privateKeyPath?: string;
   passphrase?: string;
   defaultPath?: string;
+  hostKeyFingerprint?: string;
 }
 
 export type MountableConnectionType = 'smb' | 'nfs' | 'webdav';
@@ -85,7 +86,12 @@ export interface RsyncConnectionProfile extends BaseConnectionProfile {
   passphrase?: string;
   defaultPath?: string;
   sshPort?: number;
+  hostKeyFingerprint?: string;
 }
+
+export type ConnectionConnectResult =
+  | { status: 'connected' }
+  | { status: 'host-key-untrusted'; fingerprint: string };
 
 export interface AzureBlobConnectionProfile extends BaseConnectionProfile {
   type: 'azure-blob';

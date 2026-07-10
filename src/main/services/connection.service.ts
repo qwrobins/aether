@@ -125,8 +125,12 @@ export class ConnectionService {
         try {
           (clone as Record<string, unknown>)[field as string] = this.credentials.decrypt(value);
           decryptedFields.add(field);
-        } catch {
-          // If decryption fails, leave the value as-is
+        } catch (error) {
+          throw new Error(
+            `Failed to decrypt stored credential field "${field}": ${
+              error instanceof Error ? error.message : 'decryption failed'
+            }`,
+          );
         }
       }
     }
@@ -148,45 +152,32 @@ export class ConnectionService {
     existingStoredProfile: ConnectionProfile,
   ): PreservedProfileResult {
     const clone = { ...profile };
-    const { profile: existing, decryptedFields } = this.decryptProfile(existingStoredProfile);
     const fields = this.getSensitiveFields(clone);
     const preservedEncryptedFields = new Set<string>();
 
     for (const field of fields) {
       const currentValue = (clone as Record<string, unknown>)[field];
-      const existingValue = (existing as unknown as Record<string, unknown>)[field];
       const existingStoredValue = (existingStoredProfile as unknown as Record<string, unknown>)[field];
       if (
-        currentValue === undefined &&
-        decryptedFields.has(field) &&
-        typeof existingValue === 'string' &&
-        existingValue.length > 0
-      ) {
-        (clone as Record<string, unknown>)[field] = existingValue;
-      } else if (
         currentValue === undefined &&
         typeof existingStoredValue === 'string' &&
         existingStoredValue.length > 0
       ) {
-        (clone as Record<string, unknown>)[field] =
-          this.encryptExistingStoredSensitiveField(field, existingStoredValue);
+        try {
+          this.credentials.decrypt(existingStoredValue);
+        } catch (error) {
+          throw new Error(
+            `Failed to preserve stored credential field "${field}": ${
+              error instanceof Error ? error.message : 'decryption failed'
+            }`,
+          );
+        }
+        (clone as Record<string, unknown>)[field] = existingStoredValue;
         preservedEncryptedFields.add(field);
       }
     }
 
     return { profile: clone, preservedEncryptedFields };
-  }
-
-  private encryptExistingStoredSensitiveField(field: string, value: string): string {
-    try {
-      return this.credentials.encrypt(value);
-    } catch (error) {
-      throw new Error(
-        `Failed to preserve stored credential field "${field}": ${
-          error instanceof Error ? error.message : 'encryption failed'
-        }`,
-      );
-    }
   }
 
   private getSensitiveFields(profile: ConnectionProfile): string[] {

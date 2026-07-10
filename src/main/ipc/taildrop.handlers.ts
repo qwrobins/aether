@@ -1,8 +1,8 @@
-import type { IpcMain } from 'electron';
 import { IpcChannels } from '@shared/constants/channels';
 import { TaildropService } from '../services/taildrop.service';
 import { getTransferService } from './transfer.handlers';
 import type { TaildropReceiveRequest } from '@shared/types/taildrop';
+import type { IpcMainHandle } from './ipc-main-handle';
 
 export const taildropService = new TaildropService();
 
@@ -16,7 +16,7 @@ function validateReceiveRequest(request: TaildropReceiveRequest): TaildropReceiv
   return request;
 }
 
-export function registerTaildropHandlers(ipcMain: IpcMain): void {
+export function registerTaildropHandlers(ipcMain: IpcMainHandle): void {
   getTransferService().setTaildropSender((item, signal) =>
     taildropService.sendFile(item.sourcePath, item.destinationPath, signal),
   );

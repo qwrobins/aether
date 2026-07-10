@@ -170,6 +170,14 @@ export function NetworkConnectionForm({ type, formData, onChange }: NetworkConne
         )}
         <PathField id="rsync-path" label="Default Path" field="defaultPath" value={formData.defaultPath} onChange={onChange} />
         <PathField id="rsync-module" label="Module" field="module" value={formData.module} onChange={onChange} />
+        <PathField
+          id="rsync-host-key"
+          label="SSH Host Key Fingerprint"
+          field="hostKeyFingerprint"
+          value={formData.hostKeyFingerprint}
+          onChange={onChange}
+          description="Verify this SHA256 fingerprint with the server administrator."
+        />
       </div>
     );
   }
@@ -250,11 +258,14 @@ function HostField({ value, onChange }: { value?: string; onChange: (field: stri
   );
 }
 
-function PathField({ id, label, field, value, onChange }: { id: string; label: string; field: string; value?: string; onChange: (field: string, value: string) => void }) {
+function PathField({ id, label, field, value, onChange, description }: { id: string; label: string; field: string; value?: string; onChange: (field: string, value: string) => void; description?: string }) {
+  const descriptionId = description ? `${id}-description` : undefined;
+
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} className="font-mono text-[12px]" value={value ?? ''} onChange={(e) => onChange(field, e.target.value)} />
+      <Input id={id} aria-describedby={descriptionId} className="font-mono text-[12px]" value={value ?? ''} onChange={(e) => onChange(field, e.target.value)} />
+      {description && <p id={descriptionId} className="text-[11px] text-muted-foreground">{description}</p>}
     </div>
   );
 }
