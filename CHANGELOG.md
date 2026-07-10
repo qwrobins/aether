@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.23](https://github.com/qwrobins/aether/compare/v0.1.22...v0.1.23) (2026-07-10)
+
+### Bug Fixes
+
+* fix(security): harden credentials and remote connections ([#44](https://github.com/qwrobins/aether/pull/44))
+  * fail closed when secure credential storage is unavailable and lock connection storage to mode 0600
+  * verify SFTP and rsync SSH host keys with explicit first-use trust confirmation
+  * validate IPC senders and deny browser permission requests by default
+  * close replaced remote clients and remove unused vulnerable packaged dependencies
+  * bump Aether to 0.1.23
+
 ## [0.1.22](https://github.com/qwrobins/aether/compare/v0.1.21...v0.1.22) (2026-05-17)
 
 ### Bug Fixes
