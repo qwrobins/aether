@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/qwrobins/aether/compare/v0.1.24...v0.1.25) (2026-07-23)
+
+### Bug Fixes
+
+* fix: security hardening and bug fixes from codebase audit ([#46](https://github.com/qwrobins/aether/pull/46))
+  * Fixes for all findings from a full codebase security/bug/performance audit (report in discussion). Overall the app was already well-hardened; this PR closes the remaining gaps — most notably a **remote-server-to-local arbitrary file write** via single-file downloads and a **forged drag-and-drop local file exfiltration** vector.
+
 ## [0.1.24](https://github.com/qwrobins/aether/compare/v0.1.23...v0.1.24) (2026-07-10)
 
 ### Performance
