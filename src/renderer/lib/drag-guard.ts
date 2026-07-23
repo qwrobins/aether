@@ -63,6 +63,7 @@ export function parseDragTransferPayload(raw: string): DragTransferPayload | nul
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const candidate = entry as Record<string, unknown>;
     if (typeof candidate.name !== 'string' || typeof candidate.path !== 'string') return null;
+    if (candidate.size !== undefined && typeof candidate.size !== 'number') return null;
     if (typeof candidate.isDirectory !== 'boolean') return null;
   }
 

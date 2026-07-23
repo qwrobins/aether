@@ -528,6 +528,7 @@ describe('registerTransferHandlers', () => {
       })),
     ).rejects.toThrow('Download destination escapes the local directory');
 
+    expect(client.stat).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();
   });
 

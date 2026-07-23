@@ -3,7 +3,7 @@ import { ConnectionService } from '../services/connection.service';
 import { IpcChannels } from '@shared/constants/channels';
 import type { IpcMainHandle } from './ipc-main-handle';
 
-const SSH_FINGERPRINT_PATTERN = /^SHA256:[A-Za-z0-9+/]+={0,2}$/;
+const SSH_FINGERPRINT_PATTERN = /^SHA256:[A-Za-z0-9+/]{43}=?$/;
 
 export function registerConnectionHandlers(ipcMain: IpcMainHandle): void {
   const service = new ConnectionService();

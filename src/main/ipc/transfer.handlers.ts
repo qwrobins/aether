@@ -344,6 +344,11 @@ export function registerTransferHandlers(
             }
             return [];
           } else if (request.connectionType === 'sftp' || request.connectionType === 'rsync') {
+            // Validate declared single-file destinations before touching the
+            // remote so an unsafe path fails without a stat round-trip.
+            if (request.isDirectory === false) {
+              assertSafeSingleFileDownloadDestination(request);
+            }
             const service = request.connectionType === 'rsync' ? rsyncService : sftpService;
             const client = service.getClient(request.connectionId);
             const stat = await client.stat(request.sourcePath);

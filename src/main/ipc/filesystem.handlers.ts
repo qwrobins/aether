@@ -4,7 +4,7 @@ import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
 import type { IpcMainHandle } from './ipc-main-handle';
 
-const DEVICE_PATH_PATTERN = /^\/dev\/[A-Za-z0-9._-]+$/;
+const DEVICE_PATH_PATTERN = /^\/dev\/(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
 
 function assertNonEmptyPath(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0) {

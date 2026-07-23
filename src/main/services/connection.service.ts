@@ -169,7 +169,10 @@ export class ConnectionService {
     }
     const candidate = profile as Record<string, unknown>;
     const type = candidate.type;
-    if (typeof type !== 'string' || !(type in PROFILE_STRING_FIELDS)) {
+    if (
+      typeof type !== 'string' ||
+      !Object.prototype.hasOwnProperty.call(PROFILE_STRING_FIELDS, type)
+    ) {
       throw new Error(`Invalid connection profile type: ${String(type)}`);
     }
     if (candidate.id !== undefined && typeof candidate.id !== 'string') {

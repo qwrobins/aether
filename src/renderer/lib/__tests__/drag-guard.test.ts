@@ -71,6 +71,14 @@ describe('drag-guard', () => {
         }),
       ),
     ).toBeNull();
+    expect(
+      parseDragTransferPayload(
+        JSON.stringify({
+          panelType: 'local',
+          entries: [{ name: 'x', path: '/x', size: 'big', isDirectory: false }],
+        }),
+      ),
+    ).toBeNull();
   });
 
   it('rejects payloads over the entry cap', () => {

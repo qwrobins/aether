@@ -89,6 +89,8 @@ describe('registerFilesystemHandlers', () => {
     await expect(handlers.get(IpcChannels.FS_RENAME)?.({}, '', '/tmp/b')).rejects.toThrow('Invalid oldPath');
     await expect(handlers.get(IpcChannels.FS_RENAME)?.({}, '/tmp/a', '  ')).rejects.toThrow('Invalid newPath');
     await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/tmp/not-a-device')).rejects.toThrow('Invalid device path');
+    await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/dev/.')).rejects.toThrow('Invalid device path');
+    await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/dev/..')).rejects.toThrow('Invalid device path');
 
     expect(remove).not.toHaveBeenCalled();
     expect(mkdir).not.toHaveBeenCalled();
