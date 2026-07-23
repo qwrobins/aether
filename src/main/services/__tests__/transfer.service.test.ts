@@ -3,6 +3,7 @@ import type { TransferItem, TransferRequest, TransferResult } from '@shared/type
 
 const statMock = vi.fn();
 const mkdirMock = vi.fn();
+const lstatMock = vi.fn();
 const unlinkMock = vi.fn();
 const renameMock = vi.fn();
 const createReadStreamMock = vi.fn();
@@ -13,6 +14,7 @@ const uploadOnMock = vi.fn();
 vi.mock('node:fs/promises', () => ({
   stat: statMock,
   mkdir: mkdirMock,
+  lstat: lstatMock,
   unlink: unlinkMock,
   rename: renameMock,
 }));
@@ -38,7 +40,11 @@ type TransferServiceInternals = {
     speed: number,
     force?: boolean,
   ) => void;
+  emitComplete: (result: TransferResult) => void;
+  emitError: (id: string, error: string) => void;
+  pruneTerminalTransfers: () => void;
   transfers: Map<string, TransferItem>;
+  terminalTransfers: Set<string>;
   abortControllers: Map<string, AbortController>;
   setSftpClientFactory: (factory: (connectionId: string) => Promise<unknown>) => void;
   executeTransfer: (
@@ -68,12 +74,18 @@ type TransferServiceInternals = {
   closeSftpTransferClient: (id: string, mode: 'abort' | 'disconnect') => Promise<void>;
   cleanupCancelledDownload: (item: TransferItem) => Promise<void>;
   cleanupTransferResources: (id: string) => Promise<void>;
-  emitComplete: (result: TransferResult) => void;
 };
 
 vi.mock('electron', () => ({
   BrowserWindow: class BrowserWindow {},
 }));
+
+function createWindowMock(send: ReturnType<typeof vi.fn>, destroyed = false) {
+  return {
+    webContents: { send },
+    isDestroyed: () => destroyed,
+  };
+}
 
 function createRequest(overrides: Partial<TransferRequest> = {}): TransferRequest {
   return {
@@ -98,6 +110,8 @@ describe('TransferService', () => {
     vi.useRealTimers();
     statMock.mockReset();
     mkdirMock.mockReset();
+    lstatMock.mockReset();
+    lstatMock.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     unlinkMock.mockReset();
     renameMock.mockReset();
     createReadStreamMock.mockReset();
@@ -115,7 +129,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer').mockImplementation(async (item: TransferItem) => {
       item.size = 10;
@@ -147,7 +161,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     internals.emitProgress('transfer-1', 1, 100, 10);
     vi.advanceTimersByTime(50);
@@ -170,7 +184,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer')
       .mockRejectedValueOnce(new Error('boom'))
@@ -201,7 +215,7 @@ describe('TransferService', () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     const id = await service.enqueue(createRequest({ bucket: undefined }), undefined);
     await flushQueue();
@@ -224,9 +238,9 @@ describe('TransferService', () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
     statMock.mockResolvedValue({ size: 10 });
-    createReadStreamMock.mockReturnValue({});
+    createReadStreamMock.mockReturnValue({ destroy: vi.fn() });
 
     const id = await service.enqueue(createRequest({ bucket: undefined }), {} as never);
     await flushQueue();
@@ -248,7 +262,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
@@ -276,7 +290,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     const client = {
       mkdir: vi.fn(),
@@ -346,7 +360,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
@@ -384,7 +398,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
 
@@ -409,7 +423,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     const controller = new AbortController();
     controller.abort();
@@ -458,6 +472,22 @@ describe('TransferService', () => {
     expect(service.getTransfers().map((item) => item.id)).toEqual(['queued']);
   });
 
+  it('clears only the requested terminal statuses', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    internals.transfers = new Map<string, TransferItem>([
+      ['done', { ...createRequest(), id: 'done', fileName: 'done', size: 1, bytesTransferred: 1, status: 'completed', speed: 0, retryCount: 0 }],
+      ['failed', { ...createRequest(), id: 'failed', fileName: 'failed', size: 1, bytesTransferred: 0, status: 'failed', speed: 0, retryCount: 0 }],
+      ['cancelled', { ...createRequest(), id: 'cancelled', fileName: 'cancelled', size: 1, bytesTransferred: 0, status: 'cancelled', speed: 0, retryCount: 0 }],
+    ]);
+
+    service.clear(['completed']);
+
+    expect(service.getTransfers().map((item) => item.id).sort()).toEqual(['cancelled', 'failed']);
+  });
+
   it('downloads from S3 and creates the destination directory', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);
@@ -471,7 +501,7 @@ describe('TransferService', () => {
     });
     createWriteStreamMock.mockReturnValue({ write, end, on, destroy, once: vi.fn(), off: vi.fn() });
 
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     const body = {
       async *[Symbol.asyncIterator]() {
@@ -500,7 +530,7 @@ describe('TransferService', () => {
     await internals.executeS3Transfer(item, { send: vi.fn().mockResolvedValue({ ContentLength: 5, Body: body }) });
 
     expect(mkdirMock).toHaveBeenCalledWith('/tmp/nested', { recursive: true });
-    expect(createWriteStreamMock).toHaveBeenCalledWith('/tmp/nested/file.txt.part');
+    expect(createWriteStreamMock).toHaveBeenCalledWith('/tmp/nested/file.txt.part', { mode: 0o600 });
     expect(write).toHaveBeenCalledTimes(2);
     expect(renameMock).toHaveBeenCalledWith('/tmp/nested/file.txt.part', '/tmp/nested/file.txt');
     expect(item.tempPath).toBeUndefined();
@@ -571,7 +601,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
 
     vi.spyOn(internals, 'executeS3Transfer').mockImplementation(
       async (_item: TransferItem, _client: unknown, signal?: AbortSignal) =>
@@ -594,7 +624,7 @@ describe('TransferService', () => {
     await flushQueue();
     await flushQueue();
 
-    expect(unlinkMock).toHaveBeenCalledWith('/tmp/downloads/file.txt.part');
+    expect(unlinkMock).toHaveBeenCalledWith('/tmp/downloads/file.txt.aether-transfer-1.part');
     expect(send).toHaveBeenCalledWith(
       'transfer:complete',
       expect.objectContaining({ transferId: id, status: 'cancelled', success: false }),
@@ -684,7 +714,7 @@ describe('TransferService', () => {
     const service = new TransferService(1);
     const internals = service as unknown as TransferServiceInternals;
     const send = vi.fn();
-    service.setWindow({ webContents: { send } } as never);
+    service.setWindow(createWindowMock(send) as never);
     statMock.mockResolvedValue({ size: 20 });
 
     const client = {
@@ -793,5 +823,149 @@ describe('TransferService', () => {
     };
 
     await expect(internals.executeSftpTransfer(item, client, controller.signal)).rejects.toThrow('Aborted');
+  });
+
+  it('removes the partial download file when a download fails permanently', async () => {
+    vi.useFakeTimers();
+
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    service.setWindow(createWindowMock(send) as never);
+
+    vi.spyOn(internals, 'executeS3Transfer').mockRejectedValue(new Error('boom'));
+
+    const id = await service.enqueue(
+      createRequest({
+        direction: 'download',
+        sourcePath: 'folder/file.txt',
+        destinationPath: '/tmp/downloads/file.txt',
+      }),
+      {} as never,
+    );
+    await flushQueue();
+
+    expect(service.getTransfer(id)).toMatchObject({ status: 'queued', retryCount: 1 });
+    expect(unlinkMock).not.toHaveBeenCalled();
+
+    // Exhaust the retry attempts (2s, 4s, 8s backoff) until the transfer fails
+    await vi.advanceTimersByTimeAsync(2000);
+    await flushQueue();
+    await vi.advanceTimersByTimeAsync(4000);
+    await flushQueue();
+    await vi.advanceTimersByTimeAsync(8000);
+    await flushQueue();
+
+    expect(service.getTransfer(id)?.status).toBe('failed');
+    expect(unlinkMock).toHaveBeenCalledWith('/tmp/downloads/file.txt.aether-transfer-1.part');
+    expect(send).toHaveBeenCalledWith(
+      'transfer:complete',
+      expect.objectContaining({ transferId: id, status: 'failed', success: false }),
+    );
+  });
+
+  it('replaces a symlinked download destination instead of writing through it', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const write = vi.fn(() => true);
+    const end = vi.fn();
+    const on = vi.fn((event: string, callback: () => void) => {
+      if (event === 'finish') callback();
+    });
+    createWriteStreamMock.mockReturnValue({ write, end, on, destroy: vi.fn(), once: vi.fn(), off: vi.fn() });
+    lstatMock.mockResolvedValue({ isSymbolicLink: () => true });
+
+    const body = {
+      async *[Symbol.asyncIterator]() {
+        yield Buffer.from('abc');
+      },
+    };
+
+    const item: TransferItem = {
+      id: 'download-symlink',
+      fileName: 'file.txt',
+      sourcePath: 'folder/file.txt',
+      destinationPath: '/tmp/file.txt',
+      tempPath: '/tmp/file.txt.aether-123.part',
+      direction: 'download',
+      connectionId: 'conn-1',
+      connectionType: 's3',
+      bucket: 'bucket',
+      size: 0,
+      bytesTransferred: 0,
+      status: 'active',
+      speed: 0,
+      retryCount: 0,
+    };
+
+    await internals.executeS3Transfer(item, { send: vi.fn().mockResolvedValue({ ContentLength: 3, Body: body }) });
+
+    expect(unlinkMock).toHaveBeenCalledWith('/tmp/file.txt');
+    expect(renameMock).toHaveBeenCalledWith('/tmp/file.txt.aether-123.part', '/tmp/file.txt');
+    expect(item.tempPath).toBeUndefined();
+  });
+
+  it('does not send events to a destroyed window', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    service.setWindow(createWindowMock(send, true) as never);
+
+    internals.emitProgress('transfer-1', 5, 10, 1, true);
+    internals.emitComplete({ transferId: 'transfer-1', status: 'completed', success: true });
+    internals.emitError('transfer-1', 'boom');
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('stops sending events after the window is cleared', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+    const send = vi.fn();
+    const window = createWindowMock(send);
+    service.setWindow(window as never);
+
+    internals.emitProgress('transfer-1', 5, 10, 1, true);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    service.clearWindow(window as never);
+    internals.emitProgress('transfer-1', 6, 10, 1, true);
+    internals.emitComplete({ transferId: 'transfer-1', status: 'completed', success: true });
+
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('prunes the oldest terminal transfers beyond the safety cap', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    for (let i = 0; i < 505; i++) {
+      const id = `old-${i}`;
+      internals.transfers.set(id, {
+        ...createRequest(),
+        id,
+        fileName: id,
+        size: 1,
+        bytesTransferred: 1,
+        status: 'completed',
+        speed: 0,
+        retryCount: 0,
+      });
+      internals.terminalTransfers.add(id);
+    }
+
+    internals.pruneTerminalTransfers();
+
+    expect(internals.terminalTransfers.size).toBe(500);
+    expect(internals.transfers.size).toBe(500);
+    expect(internals.terminalTransfers.has('old-0')).toBe(false);
+    expect(internals.transfers.has('old-4')).toBe(false);
+    expect(internals.terminalTransfers.has('old-5')).toBe(true);
+    expect(internals.transfers.has('old-5')).toBe(true);
   });
 });

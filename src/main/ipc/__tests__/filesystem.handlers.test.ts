@@ -70,6 +70,48 @@ describe('registerFilesystemHandlers', () => {
     expect(openInExplorer).toHaveBeenCalledWith('/tmp/a');
   });
 
+  it('rejects invalid delete, mkdir, rename, and mount inputs before reaching the service', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown> | unknown>();
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown> | unknown) => {
+        handlers.set(channel, handler);
+      }),
+    };
+
+    const { registerFilesystemHandlers } = await import('../filesystem.handlers');
+    registerFilesystemHandlers(ipcMain as never);
+
+    await expect(handlers.get(IpcChannels.FS_DELETE)?.({}, 'not-an-array')).rejects.toThrow('Invalid paths');
+    await expect(handlers.get(IpcChannels.FS_DELETE)?.({}, [])).rejects.toThrow('Invalid paths');
+    await expect(handlers.get(IpcChannels.FS_DELETE)?.({}, [''])).rejects.toThrow('Invalid paths');
+    await expect(handlers.get(IpcChannels.FS_DELETE)?.({}, ['/tmp/a', 42])).rejects.toThrow('Invalid paths');
+    await expect(handlers.get(IpcChannels.FS_MKDIR)?.({}, '')).rejects.toThrow('Invalid path');
+    await expect(handlers.get(IpcChannels.FS_RENAME)?.({}, '', '/tmp/b')).rejects.toThrow('Invalid oldPath');
+    await expect(handlers.get(IpcChannels.FS_RENAME)?.({}, '/tmp/a', '  ')).rejects.toThrow('Invalid newPath');
+    await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/tmp/not-a-device')).rejects.toThrow('Invalid device path');
+    await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/dev/.')).rejects.toThrow('Invalid device path');
+    await expect(handlers.get(IpcChannels.FS_MOUNT_DRIVE)?.({}, '/dev/..')).rejects.toThrow('Invalid device path');
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(rename).not.toHaveBeenCalled();
+    expect(mountDrive).not.toHaveBeenCalled();
+  });
+
+  it('does not register the removed shell:open-external handler', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => Promise<unknown> | unknown>();
+    const ipcMain = {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown> | unknown) => {
+        handlers.set(channel, handler);
+      }),
+    };
+
+    const { registerFilesystemHandlers } = await import('../filesystem.handlers');
+    registerFilesystemHandlers(ipcMain as never);
+
+    expect(handlers.has('shell:open-external')).toBe(false);
+  });
+
   it('passes the focused window to open-file dialogs and returns the selected path', async () => {
     const parentWindow = { id: 1 };
     getFocusedWindow.mockReturnValue(parentWindow);

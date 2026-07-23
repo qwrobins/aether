@@ -9,14 +9,10 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTaildropStore } from '@/stores/taildropStore';
+import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
 import type { TaildropTarget } from '@shared/types/taildrop';
 
 const TAILDROP_REFRESH_INTERVAL_MS = 10_000;
-
-type LocalFilePayload = {
-  panelType: 'local';
-  entries: Array<{ path: string; name: string; size?: number; isDirectory?: boolean }>;
-};
 
 type TaildropLocalFile = {
   path: string;
@@ -25,11 +21,14 @@ type TaildropLocalFile = {
   isDirectory?: boolean;
 };
 
-function getDroppedFiles(e: React.DragEvent): TaildropLocalFile[] {
+function getDroppedFiles(e: React.DragEvent, internal: boolean): TaildropLocalFile[] {
   const raw = e.dataTransfer.getData('application/aether-transfer');
   if (raw) {
-    const payload = JSON.parse(raw) as LocalFilePayload;
-    if (payload.panelType !== 'local') return [];
+    // Ignore forged payloads: content outside this window can set the same
+    // MIME type to send attacker-chosen local paths to a Taildrop device.
+    if (!internal) return [];
+    const payload = parseDragTransferPayload(raw);
+    if (!payload || payload.panelType !== 'local') return [];
     return payload.entries;
   }
 
@@ -55,7 +54,7 @@ function DeviceCard({ target }: { target: TaildropTarget }) {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!available) return;
     if (
-      e.dataTransfer.types.includes('application/aether-transfer') ||
+      (e.dataTransfer.types.includes('application/aether-transfer') && isInternalDrag()) ||
       e.dataTransfer.types.includes('Files')
     ) {
       e.preventDefault();
@@ -70,7 +69,7 @@ function DeviceCard({ target }: { target: TaildropTarget }) {
     if (!available) return;
 
     try {
-      const files = getDroppedFiles(e);
+      const files = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
       if (files.length === 0) return;
       await sendFiles(target, files);
       toast.success(`Queued ${files.length} file${files.length === 1 ? '' : 's'} for ${target.name}`);

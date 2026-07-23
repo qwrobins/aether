@@ -4,10 +4,10 @@ const readdirMock = vi.fn();
 const fsStatMock = vi.fn();
 const accessMock = vi.fn();
 const mkdirMock = vi.fn();
-const rmMock = vi.fn();
 const renameMock = vi.fn();
 const execFileMock = vi.fn();
-const openPathMock = vi.fn();
+const trashItemMock = vi.fn();
+const showItemInFolderMock = vi.fn();
 const homedirMock = vi.fn(() => '/home/tester');
 const platformMock = vi.fn(() => 'linux');
 
@@ -16,7 +16,6 @@ vi.mock('node:fs/promises', () => ({
   stat: fsStatMock,
   access: accessMock,
   mkdir: mkdirMock,
-  rm: rmMock,
   rename: renameMock,
 }));
 
@@ -29,7 +28,7 @@ vi.mock('node:util', () => ({
 }));
 
 vi.mock('electron', () => ({
-  shell: { openPath: openPathMock },
+  shell: { trashItem: trashItemMock, showItemInFolder: showItemInFolderMock },
 }));
 
 vi.mock('node:os', () => ({
@@ -191,15 +190,88 @@ describe('FilesystemService', () => {
     ]);
   });
 
-  it('parses mount output and opens paths in the explorer', async () => {
-    execFileMock.mockResolvedValue({ stdout: 'Mounted /dev/sdc1 at /run/media/tester/Backup.\n' });
+  it('mounts a known unmounted drive and reveals paths in the file manager', async () => {
+    execFileMock.mockImplementation((command: string) => {
+      if (command === 'lsblk') {
+        return Promise.resolve({
+          stdout: JSON.stringify({
+            blockdevices: [
+              {
+                name: '/dev/sdc',
+                rm: true,
+                hotplug: true,
+                type: 'disk',
+                children: [
+                  { name: '/dev/sdc1', mountpoint: null, fstype: 'ext4', size: '64G', rm: true, hotplug: true, type: 'part', label: 'Backup' },
+                ],
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ stdout: 'Mounted /dev/sdc1 at /run/media/tester/Backup.\n' });
+    });
 
     const { FilesystemService } = await import('../filesystem.service');
     const service = new FilesystemService();
 
     await expect(service.mountDrive('/dev/sdc1')).resolves.toBe('/run/media/tester/Backup');
+    expect(execFileMock).toHaveBeenCalledWith('udisksctl', ['mount', '-b', '/dev/sdc1']);
 
     service.openInExplorer('/tmp/file.txt');
-    expect(openPathMock).toHaveBeenCalledWith('/tmp/file.txt');
+    expect(showItemInFolderMock).toHaveBeenCalledWith('/tmp/file.txt');
+  });
+
+  it('rejects mounting devices that are malformed or not enumerated', async () => {
+    execFileMock.mockResolvedValue({ stdout: JSON.stringify({ blockdevices: [] }) });
+
+    const { FilesystemService } = await import('../filesystem.service');
+    const service = new FilesystemService();
+
+    await expect(service.mountDrive('/tmp/not-a-device')).rejects.toThrow('Invalid device path');
+    await expect(service.mountDrive('/dev/sdz9')).rejects.toThrow(
+      'Refusing to mount /dev/sdz9: not a known mountable device',
+    );
+    expect(execFileMock).not.toHaveBeenCalledWith(
+      'udisksctl',
+      expect.anything(),
+    );
+  });
+
+  it('moves paths to the trash instead of permanently deleting them', async () => {
+    const { FilesystemService } = await import('../filesystem.service');
+    const service = new FilesystemService();
+
+    await service.remove(['/tmp/a.txt', '/tmp/dir/b.txt']);
+
+    expect(trashItemMock).toHaveBeenCalledWith('/tmp/a.txt');
+    expect(trashItemMock).toHaveBeenCalledWith('/tmp/dir/b.txt');
+  });
+
+  it('refuses to trash the filesystem root, the home directory, or shallow paths', async () => {
+    const { FilesystemService } = await import('../filesystem.service');
+    const service = new FilesystemService();
+
+    await expect(service.remove(['/'])).rejects.toThrow(
+      'Refusing to delete "/": path is too close to the filesystem root',
+    );
+    await expect(service.remove(['/etc'])).rejects.toThrow(
+      'Refusing to delete "/etc": path is too close to the filesystem root',
+    );
+    await expect(service.remove(['/home/tester'])).rejects.toThrow(
+      'Refusing to delete "/home/tester": cannot delete the home directory',
+    );
+    expect(trashItemMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a descriptive error when trashing fails', async () => {
+    trashItemMock.mockRejectedValueOnce(new Error('boom'));
+
+    const { FilesystemService } = await import('../filesystem.service');
+    const service = new FilesystemService();
+
+    await expect(service.remove(['/tmp/a.txt'])).rejects.toThrow(
+      'Failed to move "/tmp/a.txt" to the trash: boom',
+    );
   });
 });

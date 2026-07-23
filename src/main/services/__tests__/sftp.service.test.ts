@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SftpConnectionProfile } from '@shared/types/connection';
 
 const readFile = vi.fn();
+const realpath = vi.fn((p: string) => Promise.resolve(p));
 let connectImplementation:
   | ((config: Record<string, unknown>) => Promise<void>)
   | undefined;
@@ -35,6 +36,7 @@ vi.mock('ssh2-sftp-client', () => ({
 
 vi.mock('node:fs/promises', () => ({
   readFile,
+  realpath,
 }));
 
 function profile(overrides: Partial<SftpConnectionProfile> = {}): SftpConnectionProfile {
@@ -90,6 +92,44 @@ describe('SftpService', () => {
     expect(mockClients[0]?.connect).toHaveBeenCalledWith(
       expect.objectContaining({ privateKey: 'PRIVATE KEY', passphrase: 'phrase' }),
     );
+  });
+
+  it('rejects private key paths outside the ~/.ssh directory', async () => {
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await expect(
+      service.connect('conn-1', profile({ authMethod: 'key', privateKeyPath: '/etc/ssl/private/key.pem' })),
+    ).rejects.toThrow('SSH private key path must be inside');
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it('rejects key paths that resolve outside ~/.ssh through symlinks', async () => {
+    realpath.mockImplementation((p: string) =>
+      Promise.resolve(p.endsWith('/.ssh/id_linked') ? '/tmp/elsewhere/id_linked' : p),
+    );
+
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await expect(
+      service.connect('conn-1', profile({ authMethod: 'key', privateKeyPath: '~/.ssh/id_linked' })),
+    ).rejects.toThrow('SSH private key path must be inside');
+    expect(readFile).not.toHaveBeenCalled();
+
+    realpath.mockImplementation((p: string) => Promise.resolve(p));
+  });
+
+  it('reports unreadable private keys with a descriptive error', async () => {
+    realpath.mockRejectedValueOnce(new Error('ENOENT'));
+
+    const { SftpService } = await import('../sftp.service');
+    const service = new SftpService();
+
+    await expect(
+      service.connect('conn-1', profile({ authMethod: 'key', privateKeyPath: '~/.ssh/missing' })),
+    ).rejects.toThrow('SSH private key is not readable: ~/.ssh/missing');
+    expect(readFile).not.toHaveBeenCalled();
   });
 
   it('lists remote directories and filters dot entries', async () => {

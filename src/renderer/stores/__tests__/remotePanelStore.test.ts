@@ -257,13 +257,12 @@ describe('useRemotePanelStore', () => {
     });
   });
 
-  it('confirms and persists a first-use SSH host key before reconnecting', async () => {
+  it('trusts a first-use SSH host key via the main-process dialog before reconnecting', async () => {
     const listing: DirectoryListing = {
       path: '/',
       parentPath: null,
       entries: [],
     };
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     let connectAttempts = 0;
     mockInvoke(async (channel) => {
       if (channel === 'conn:connect') {
@@ -272,18 +271,15 @@ describe('useRemotePanelStore', () => {
           ? { status: 'host-key-untrusted', fingerprint: 'SHA256:trusted' }
           : { status: 'connected' };
       }
-      if (channel === 'conn:save') return 'sftp-1';
+      if (channel === 'conn:trust-host-key') return true;
       if (channel === 'sftp:list') return listing;
       return Promise.reject(new Error(`Unhandled channel ${channel}`));
     });
 
     await useRemotePanelStore.getState().connect(sftpProfile());
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('SHA256:trusted'));
-    expect(window.api.invoke).toHaveBeenCalledWith(
-      'conn:save',
-      expect.objectContaining({ id: 'sftp-1', hostKeyFingerprint: 'SHA256:trusted' }),
-    );
+    expect(window.api.invoke).toHaveBeenCalledWith('conn:trust-host-key', 'sftp-1', 'SHA256:trusted');
+    expect(window.api.invoke).not.toHaveBeenCalledWith('conn:save', expect.anything());
     expect(connectAttempts).toBe(2);
     expect(useRemotePanelStore.getState().activeProfile).toEqual(
       expect.objectContaining({ hostKeyFingerprint: 'SHA256:trusted' }),
@@ -291,20 +287,39 @@ describe('useRemotePanelStore', () => {
   });
 
   it('rejects a first-use SSH host key without persisting it', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
     mockInvoke(async (channel) => {
       if (channel === 'conn:connect') {
         return { status: 'host-key-untrusted', fingerprint: 'SHA256:untrusted' };
       }
+      if (channel === 'conn:trust-host-key') return false;
       return Promise.reject(new Error(`Unhandled channel ${channel}`));
     });
 
     await useRemotePanelStore.getState().connect(sftpProfile());
 
+    expect(window.api.invoke).toHaveBeenCalledWith('conn:trust-host-key', 'sftp-1', 'SHA256:untrusted');
     expect(window.api.invoke).not.toHaveBeenCalledWith('conn:save', expect.anything());
     expect(useRemotePanelStore.getState()).toMatchObject({
       connectionStatus: 'error',
       connectionError: 'SSH host key was not trusted',
+      activeConnectionId: null,
+    });
+  });
+
+  it('refuses the host key trust flow for an unsaved profile', async () => {
+    mockInvoke(async (channel) => {
+      if (channel === 'conn:connect') {
+        return { status: 'host-key-untrusted', fingerprint: 'SHA256:unsaved' };
+      }
+      return Promise.reject(new Error(`Unhandled channel ${channel}`));
+    });
+
+    await useRemotePanelStore.getState().connect(sftpProfile({ id: '' }));
+
+    expect(window.api.invoke).not.toHaveBeenCalledWith('conn:trust-host-key', expect.anything(), expect.anything());
+    expect(useRemotePanelStore.getState()).toMatchObject({
+      connectionStatus: 'error',
+      connectionError: 'Save this connection profile before trusting its SSH host key',
       activeConnectionId: null,
     });
   });

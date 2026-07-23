@@ -61,6 +61,14 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
   const files = entries.filter((e) => !e.isDirectory);
   const multiplier = direction === 'asc' ? 1 : -1;
 
+  // Precompute timestamps once so the comparator does not re-parse dates.
+  const modifiedTimes = new Map<FileEntry, number>();
+  if (field === 'modifiedAt') {
+    for (const entry of entries) {
+      modifiedTimes.set(entry, new Date(entry.modifiedAt).getTime());
+    }
+  }
+
   const sorter = (a: FileEntry, b: FileEntry) => {
     switch (field) {
       case 'name':
@@ -68,7 +76,7 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
       case 'size':
         return multiplier * (a.size - b.size);
       case 'modifiedAt':
-        return multiplier * (new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime());
+        return multiplier * ((modifiedTimes.get(a) ?? 0) - (modifiedTimes.get(b) ?? 0));
       default:
         return 0;
     }
@@ -169,9 +177,15 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
         if (profile.type !== 'sftp' && profile.type !== 'rsync') {
           throw new Error('SSH host key verification is not supported for this connection type');
         }
-        const trusted = window.confirm(
-          `Trust SSH host key for ${profile.name}?\n\n${connectResult.fingerprint}\n\n` +
-            'Only continue if this fingerprint matches the server administrator\'s value.',
+        // The trust dialog lives in the main process and persists the
+        // fingerprint by profile id, so it only works for saved profiles.
+        if (!profile.id) {
+          throw new Error('Save this connection profile before trusting its SSH host key');
+        }
+        const trusted = await window.api.invoke(
+          'conn:trust-host-key',
+          profile.id,
+          connectResult.fingerprint,
         );
         if (!trusted) {
           throw new Error('SSH host key was not trusted');
@@ -181,7 +195,6 @@ export const useRemotePanelStore = create<RemotePanelState>((set, get) => ({
           ...profile,
           hostKeyFingerprint: connectResult.fingerprint,
         };
-        await window.api.invoke('conn:save', connectedProfile);
         connectResult = await window.api.invoke('conn:connect', profile.id);
         if (connectResult.status !== 'connected') {
           throw new Error('SSH host key trust could not be established');

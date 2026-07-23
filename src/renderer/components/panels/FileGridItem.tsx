@@ -1,4 +1,6 @@
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
+import { beginInternalDrag, endInternalDrag } from '@/lib/drag-guard';
 import { FileIcon } from '@/components/shared/FileIcon';
 import { FileSize } from '@/components/shared/FileSize';
 import { FileContextMenu } from './FileContextMenu';
@@ -46,7 +48,31 @@ function getFileNameParts(
   return { base: name.slice(0, lastDot), ext: name.slice(lastDot) };
 }
 
-export function FileGridItem({
+function areFileGridItemPropsEqual(prev: FileGridItemProps, next: FileGridItemProps): boolean {
+  if (
+    prev.entry !== next.entry ||
+    prev.index !== next.index ||
+    prev.isSelected !== next.isSelected ||
+    prev.allEntries !== next.allEntries ||
+    prev.panelType !== next.panelType ||
+    prev.onSelect !== next.onSelect ||
+    prev.onNavigate !== next.onNavigate ||
+    prev.onDelete !== next.onDelete ||
+    prev.onRename !== next.onRename ||
+    prev.onTransfer !== next.onTransfer
+  ) {
+    return false;
+  }
+  // A new selection Set is irrelevant to rows that are unselected in both
+  // renders: they never read selectedFiles. Selected rows must re-render so
+  // their drag/delete handlers capture the current selection.
+  if (prev.isSelected || next.isSelected) {
+    return prev.selectedFiles === next.selectedFiles;
+  }
+  return true;
+}
+
+export const FileGridItem = memo(function FileGridItem({
   entry,
   index,
   isSelected,
@@ -60,6 +86,7 @@ export function FileGridItem({
   onTransfer,
 }: FileGridItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
+    beginInternalDrag(e.dataTransfer);
     const draggedEntries = isSelected
       ? allEntries.filter((f) => selectedFiles.has(f.path))
       : [entry];
@@ -78,6 +105,10 @@ export function FileGridItem({
       JSON.stringify(payload),
     );
     e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragEnd = () => {
+    endInternalDrag();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -121,6 +152,7 @@ export function FileGridItem({
         }}
         draggable
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onClick={(e) =>
           onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey)
         }
@@ -152,4 +184,4 @@ export function FileGridItem({
       </div>
     </FileContextMenu>
   );
-}
+}, areFileGridItemPropsEqual);

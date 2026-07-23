@@ -77,17 +77,19 @@ export const useTransferStore = create<TransferState>((set, get) => ({
 
   updateProgress: (progress) =>
     set((s) => ({
-      transfers: s.transfers.map((t) =>
-        t.id === progress.transferId
-          ? {
-              ...t,
-              bytesTransferred: progress.bytesTransferred,
-              size: progress.totalBytes,
-              speed: progress.speed,
-              status: 'active' as const,
-            }
-          : t
-      ),
+      transfers: s.transfers.map((t) => {
+        if (t.id !== progress.transferId) return t;
+        // Ignore late progress events for transfers that already reached a
+        // terminal state; never resurrect them back to active.
+        if (t.status !== 'queued' && t.status !== 'active') return t;
+        return {
+          ...t,
+          bytesTransferred: progress.bytesTransferred,
+          size: progress.totalBytes,
+          speed: progress.speed,
+          status: 'active' as const,
+        };
+      }),
     })),
 
   markComplete: (result) => {
@@ -171,17 +173,25 @@ export const useTransferStore = create<TransferState>((set, get) => ({
       return { transfers, batchProgress };
     }),
 
-  clearCompleted: () =>
+  clearCompleted: () => {
     set((s) => ({
       transfers: s.transfers.filter(
         (t) => !['completed', 'failed', 'cancelled'].includes(t.status)
       ),
-    })),
+    }));
+    // Let the main process drop the same terminal transfer records
+    void window.api
+      .invoke('transfer:clear', ['completed', 'failed', 'cancelled'])
+      .catch(() => undefined);
+  },
 
-  clearSuccessful: () =>
+  clearSuccessful: () => {
     set((s) => ({
       transfers: s.transfers.filter((t) => t.status !== 'completed'),
-    })),
+    }));
+    // Let the main process drop the same terminal transfer records
+    void window.api.invoke('transfer:clear', ['completed']).catch(() => undefined);
+  },
 
   setTransfers: (transfers) => set({ transfers, batchProgress: buildBatchProgress(transfers) }),
 

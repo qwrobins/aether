@@ -56,4 +56,15 @@ describe('TransferQueue', () => {
     expect(screen.queryByText('completed-2')).toBeNull();
     expect(screen.getByText('2 additional transfers hidden')).toBeTruthy();
   });
+
+  it('formats remaining sizes beyond one terabyte', () => {
+    const huge = transfer('huge-1', 'active');
+    huge.size = 3 * 1024 ** 4;
+    huge.bytesTransferred = 0;
+    useTransferStore.setState({ transfers: [huge] });
+
+    render(<TransferQueue />);
+
+    expect(screen.getByText(/3\.0 TB remaining/)).toBeTruthy();
+  });
 });

@@ -1,7 +1,7 @@
 import PQueue from 'p-queue';
 import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
-import { stat, mkdir, unlink, rename } from 'node:fs/promises';
+import { stat, mkdir, lstat, unlink, rename } from 'node:fs/promises';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
@@ -10,10 +10,12 @@ import { Upload } from '@aws-sdk/lib-storage';
 import type { Progress } from '@aws-sdk/lib-storage';
 import type {
   SftpTransferClient,
+  TerminalTransferStatus,
   TransferItem,
   TransferRequest,
   TransferProgress,
   TransferResult,
+  TransferStatus,
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
 
@@ -44,6 +46,8 @@ function getRequiredBucket(item: TransferItem): string {
 function isMountedNetworkConnectionType(type: TransferItem['connectionType']): boolean {
   return type === 'smb' || type === 'nfs' || type === 'webdav';
 }
+
+const MAX_TERMINAL_TRANSFERS = 500;
 
 function waitForDrain(writeStream: WriteStream): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -86,6 +90,12 @@ export class TransferService {
     this.window = window;
   }
 
+  clearWindow(window?: BrowserWindow): void {
+    if (!window || this.window === window) {
+      this.window = null;
+    }
+  }
+
   setSftpClientFactory(factory: SftpClientFactory): void {
     this.sftpClientFactory = factory;
   }
@@ -119,7 +129,9 @@ export class TransferService {
       fileName: path.basename(request.sourcePath),
       ...request,
       tempPath:
-        request.direction === 'download' ? `${request.destinationPath}.part` : undefined,
+        request.direction === 'download'
+          ? `${request.destinationPath}.aether-${crypto.randomUUID()}.part`
+          : undefined,
       size: size ?? 0,
       bytesTransferred: 0,
       status: 'queued',
@@ -236,32 +248,42 @@ export class TransferService {
       const fileStat = await stat(item.sourcePath);
       item.size = fileStat.size;
 
+      // Never start an upload whose cancellation landed while we were stat'ing.
+      if (signal?.aborted) throw new Error('Aborted');
+
       const fileStream = createReadStream(item.sourcePath);
       const uploadController = new AbortController();
-      const upload = new Upload({
-        client,
-        params: {
-          Bucket: getRequiredBucket(item),
-          Key: item.destinationPath,
-          Body: fileStream,
-        },
-        abortController: uploadController,
-      });
+      const handleAbort = () => uploadController.abort();
 
-      upload.on('httpUploadProgress', (progress: Progress) => {
-        if (progress.loaded) {
-          item.bytesTransferred = progress.loaded;
-          const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
-          item.speed = elapsed > 0 ? item.bytesTransferred / elapsed : 0;
-          this.emitProgress(item.id, item.bytesTransferred, item.size, item.speed);
+      try {
+        const upload = new Upload({
+          client,
+          params: {
+            Bucket: getRequiredBucket(item),
+            Key: item.destinationPath,
+            Body: fileStream,
+          },
+          abortController: uploadController,
+        });
+
+        upload.on('httpUploadProgress', (progress: Progress) => {
+          if (progress.loaded) {
+            item.bytesTransferred = progress.loaded;
+            const elapsed = (Date.now() - (startTime || Date.now())) / 1000;
+            item.speed = elapsed > 0 ? item.bytesTransferred / elapsed : 0;
+            this.emitProgress(item.id, item.bytesTransferred, item.size, item.speed);
+          }
+        });
+
+        if (signal) {
+          signal.addEventListener('abort', handleAbort, { once: true });
         }
-      });
 
-      if (signal) {
-        signal.addEventListener('abort', () => uploadController.abort(), { once: true });
+        await upload.done();
+      } finally {
+        signal?.removeEventListener('abort', handleAbort);
+        fileStream.destroy();
       }
-
-      await upload.done();
       if (signal?.aborted) throw new Error('Aborted');
     } else {
       const destDir = path.dirname(item.destinationPath);
@@ -282,7 +304,7 @@ export class TransferService {
       if (!body) {
         throw new NonRetryableError('S3 response body is empty');
       }
-      const writeStream = createWriteStream(this.getDownloadPath(item));
+      const writeStream = createWriteStream(this.getDownloadPath(item), { mode: 0o600 });
       const handleAbort = () => {
         writeStream.destroy(new Error('Aborted'));
       };
@@ -454,7 +476,10 @@ export class TransferService {
         callback(null, chunk);
       },
     });
-    const writeStream = createWriteStream(destinationPath);
+    const writeStream = createWriteStream(
+      destinationPath,
+      item.direction === 'download' ? { mode: 0o600 } : undefined,
+    );
 
     const abort = () => {
       readStream.destroy(new Error('Aborted'));
@@ -489,9 +514,10 @@ export class TransferService {
     });
   }
 
-  clear(): void {
+  clear(statuses: TerminalTransferStatus[] = ['completed', 'failed', 'cancelled']): void {
+    const targets = new Set<TransferStatus>(statuses);
     for (const [id, item] of this.transfers) {
-      if (['completed', 'failed', 'cancelled'].includes(item.status)) {
+      if (targets.has(item.status)) {
         this.transfers.delete(id);
         void this.cleanupTransferResources(id);
         this.terminalTransfers.delete(id);
@@ -512,6 +538,7 @@ export class TransferService {
     this.emitProgress(item.id, item.size, item.size, 0, true);
     this.terminalTransfers.add(item.id);
     await this.cleanupTransferResources(item.id);
+    this.pruneTerminalTransfers();
     this.emitComplete({
       transferId: item.id,
       status: 'completed',
@@ -529,7 +556,9 @@ export class TransferService {
     item.completedAt = new Date().toISOString();
     item.speed = 0;
     this.terminalTransfers.add(item.id);
+    await this.cleanupCancelledDownload(item);
     await this.cleanupTransferResources(item.id);
+    this.pruneTerminalTransfers();
     this.emitComplete({
       transferId: item.id,
       status: 'failed',
@@ -555,11 +584,29 @@ export class TransferService {
     }
     await this.cleanupCancelledDownload(item);
     await this.cleanupTransferResources(item.id);
+    this.pruneTerminalTransfers();
     this.emitComplete({
       transferId: item.id,
       status: 'cancelled',
       success: false,
     });
+  }
+
+  private pruneTerminalTransfers(): void {
+    const excess = this.terminalTransfers.size - MAX_TERMINAL_TRANSFERS;
+    if (excess <= 0) {
+      return;
+    }
+
+    let removed = 0;
+    for (const id of this.terminalTransfers) {
+      if (removed >= excess) {
+        break;
+      }
+      this.terminalTransfers.delete(id);
+      this.transfers.delete(id);
+      removed++;
+    }
   }
 
   private async cleanupTransferResources(id: string): Promise<void> {
@@ -601,6 +648,18 @@ export class TransferService {
   private async finalizeDownload(item: TransferItem): Promise<void> {
     if (item.direction !== 'download' || !item.tempPath) {
       return;
+    }
+
+    // Never write through a pre-existing symlink at the destination; replace it instead.
+    try {
+      const destinationStat = await lstat(item.destinationPath);
+      if (destinationStat.isSymbolicLink()) {
+        await unlink(item.destinationPath);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
     }
 
     await rename(item.tempPath, item.destinationPath);
@@ -711,7 +770,7 @@ export class TransferService {
       return;
     }
     this.lastProgressEmittedAt.set(id, now);
-    this.window?.webContents.send(IpcChannels.TRANSFER_PROGRESS, {
+    this.sendToWindow(IpcChannels.TRANSFER_PROGRESS, {
       transferId: id,
       bytesTransferred: bytes,
       totalBytes: total,
@@ -720,13 +779,19 @@ export class TransferService {
   }
 
   private emitComplete(result: TransferResult): void {
-    this.window?.webContents.send(IpcChannels.TRANSFER_COMPLETE, result);
+    this.sendToWindow(IpcChannels.TRANSFER_COMPLETE, result);
   }
 
   private emitError(id: string, error: string): void {
-    this.window?.webContents.send(IpcChannels.TRANSFER_ERROR, {
+    this.sendToWindow(IpcChannels.TRANSFER_ERROR, {
       transferId: id,
       error,
     });
+  }
+
+  private sendToWindow(channel: string, payload: unknown): void {
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.webContents.send(channel, payload);
+    }
   }
 }

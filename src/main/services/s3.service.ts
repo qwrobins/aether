@@ -30,6 +30,31 @@ function normalizeRecursivePrefix(prefix: string): string {
   return prefix.endsWith('/') ? prefix : prefix + '/';
 }
 
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/**
+ * Custom S3 endpoints (e.g. MinIO) must use TLS so credentials are not sent in
+ * cleartext; plain http is only allowed for local loopback development servers.
+ */
+function assertSecureS3Endpoint(endpoint: string): void {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error(`Invalid S3 endpoint URL: ${endpoint}`);
+  }
+
+  if (url.protocol === 'https:') {
+    return;
+  }
+  if (url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname)) {
+    return;
+  }
+  throw new Error(
+    `Insecure S3 endpoint "${endpoint}": custom endpoints must use https (http is only allowed for localhost)`,
+  );
+}
+
 export class S3Service {
   private clients: Map<string, S3Client> = new Map();
   private regions: Map<string, string> = new Map();
@@ -42,6 +67,7 @@ export class S3Service {
     };
 
     if (profile.endpoint) {
+      assertSecureS3Endpoint(profile.endpoint);
       baseConfig.endpoint = profile.endpoint;
       baseConfig.forcePathStyle = true;
     }
@@ -139,23 +165,26 @@ export class S3Service {
     }
 
     const iam = new IAMClient(config);
-    const roles: Array<{ arn: string; name: string }> = [];
-    let marker: string | undefined;
+    try {
+      const roles: Array<{ arn: string; name: string }> = [];
+      let marker: string | undefined;
 
-    do {
-      const result = await iam.send(
-        new ListRolesCommand({ Marker: marker, MaxItems: 100 }),
-      );
-      for (const role of result.Roles || []) {
-        if (role.Arn && role.RoleName) {
-          roles.push({ arn: role.Arn, name: role.RoleName });
+      do {
+        const result = await iam.send(
+          new ListRolesCommand({ Marker: marker, MaxItems: 100 }),
+        );
+        for (const role of result.Roles || []) {
+          if (role.Arn && role.RoleName) {
+            roles.push({ arn: role.Arn, name: role.RoleName });
+          }
         }
-      }
-      marker = result.IsTruncated ? result.Marker : undefined;
-    } while (marker);
+        marker = result.IsTruncated ? result.Marker : undefined;
+      } while (marker);
 
-    iam.destroy();
-    return roles.sort((a, b) => a.name.localeCompare(b.name));
+      return roles.sort((a, b) => a.name.localeCompare(b.name));
+    } finally {
+      iam.destroy();
+    }
   }
 
   async listBuckets(connectionId: string): Promise<string[]> {

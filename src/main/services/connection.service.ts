@@ -28,6 +28,54 @@ const SENSITIVE_FIELDS_AZURE_BLOB: (keyof AzureBlobConnectionProfile)[] = [
   'sasToken',
 ];
 const SENSITIVE_FIELDS_GCS: (keyof GcsConnectionProfile)[] = ['serviceAccountKeyPath'];
+
+/**
+ * Known connection types mapped to the profile fields that must be strings
+ * when present. Doubles as the allowlist of persistable profile types.
+ */
+const PROFILE_STRING_FIELDS: Record<string, string[]> = {
+  s3: [
+    'region',
+    'authMethod',
+    'accessKeyId',
+    'secretAccessKey',
+    'roleArn',
+    'externalId',
+    'sourceAccessKeyId',
+    'sourceSecretAccessKey',
+    'awsProfile',
+    'defaultBucket',
+    'endpoint',
+  ],
+  sftp: [
+    'host',
+    'username',
+    'authMethod',
+    'password',
+    'privateKeyPath',
+    'passphrase',
+    'defaultPath',
+    'hostKeyFingerprint',
+  ],
+  smb: ['host', 'share', 'mountPath', 'username', 'password', 'domain', 'defaultPath'],
+  nfs: ['host', 'share', 'mountPath', 'username', 'password', 'domain', 'defaultPath'],
+  webdav: ['host', 'share', 'mountPath', 'username', 'password', 'domain', 'defaultPath'],
+  ftp: ['host', 'username', 'password', 'defaultPath'],
+  ftps: ['host', 'username', 'password', 'defaultPath'],
+  rsync: [
+    'host',
+    'module',
+    'username',
+    'authMethod',
+    'password',
+    'privateKeyPath',
+    'passphrase',
+    'defaultPath',
+    'hostKeyFingerprint',
+  ],
+  'azure-blob': ['accountName', 'container', 'accountKey', 'sasToken', 'endpoint'],
+  gcs: ['projectId', 'bucket', 'serviceAccountKeyPath'],
+};
 type DecryptedProfileResult = {
   profile: ConnectionProfile;
   decryptedFields: Set<string>;
@@ -55,6 +103,7 @@ export class ConnectionService {
   }
 
   save(profile: ConnectionProfile): string {
+    this.validateProfile(profile);
     const store = readStore();
     const profiles = store.connections as unknown as ConnectionProfile[];
     const now = new Date().toISOString();
@@ -93,6 +142,54 @@ export class ConnectionService {
     void profile;
     // Actual S3/SFTP connectivity testing comes in Phase 4/5
     return true;
+  }
+
+  /** Persist a user-confirmed SSH host key fingerprint for a stored profile. */
+  trustHostKey(id: string, fingerprint: string): void {
+    const store = readStore();
+    const profiles = store.connections as unknown as ConnectionProfile[];
+    const profile = profiles.find((p) => p.id === id);
+    if (!profile) {
+      throw new Error(`Connection not found: ${id}`);
+    }
+    if (profile.type !== 'sftp' && profile.type !== 'rsync') {
+      throw new Error(`Connection does not support SSH host-key trust: ${id}`);
+    }
+    (profile as SftpConnectionProfile | RsyncConnectionProfile).hostKeyFingerprint = fingerprint;
+    profile.updatedAt = new Date().toISOString();
+    store.connections = profiles as unknown as Record<string, unknown>[];
+    writeStore(store);
+  }
+
+  /**
+   * Lightweight structural validation for renderer-supplied profiles.
+   * Rejects non-objects and unknown types so secrets are never persisted
+   * for profiles we cannot encrypt correctly.
+   */
+  private validateProfile(profile: unknown): void {
+    if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+      throw new Error('Invalid connection profile: expected a plain object');
+    }
+    const candidate = profile as Record<string, unknown>;
+    const type = candidate.type;
+    if (
+      typeof type !== 'string' ||
+      !Object.prototype.hasOwnProperty.call(PROFILE_STRING_FIELDS, type)
+    ) {
+      throw new Error(`Invalid connection profile type: ${String(type)}`);
+    }
+    if (candidate.id !== undefined && typeof candidate.id !== 'string') {
+      throw new Error('Invalid connection profile: id must be a string');
+    }
+    if (candidate.name !== undefined && typeof candidate.name !== 'string') {
+      throw new Error('Invalid connection profile: name must be a string');
+    }
+    for (const field of PROFILE_STRING_FIELDS[type]) {
+      const value = candidate[field];
+      if (value !== undefined && typeof value !== 'string') {
+        throw new Error(`Invalid connection profile: "${field}" must be a string`);
+      }
+    }
   }
 
   private encryptProfile(
@@ -202,6 +299,7 @@ export class ConnectionService {
     if (profile.type === 'gcs') {
       return SENSITIVE_FIELDS_GCS as string[];
     }
-    return [];
+    // Fail closed: never persist secrets for a profile type we cannot encrypt.
+    throw new Error(`Unknown connection profile type: ${String(profile.type)}`);
   }
 }

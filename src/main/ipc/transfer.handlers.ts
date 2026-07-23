@@ -7,7 +7,7 @@ import { sftpService } from './sftp.handlers';
 import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
-import type { TransferRequest, TransferItem } from '@shared/types/transfer';
+import type { TerminalTransferStatus, TransferRequest, TransferItem } from '@shared/types/transfer';
 import type { IpcMainHandle } from './ipc-main-handle';
 
 const transferService = new TransferService();
@@ -66,6 +66,61 @@ function safeJoinDownloadDestination(basePath: string, relativePath: string): st
 
 function isDirectoryRequest(request: TransferRequest): boolean {
   return request.isDirectory ?? request.sourcePath.endsWith('/');
+}
+
+/**
+ * Guard the single-file download path against malicious remote names. The renderer
+ * builds the destination as `localDir + '/' + remoteName`, and a hostile SFTP server
+ * or S3 key can supply a name containing `/`, `\`, or `..` (e.g.
+ * `../../.ssh/authorized_keys`). Directory downloads are expanded through
+ * safeJoinDownloadDestination instead and never reach this check.
+ */
+function assertSafeSingleFileDownloadDestination(request: TransferRequest): void {
+  const dir = path.dirname(request.destinationPath);
+  const name = path.basename(request.destinationPath);
+
+  // The final name must be a plain file name: no traversal, no separators.
+  if (
+    name.length === 0 ||
+    name === '.' ||
+    name === '..' ||
+    name.includes('/') ||
+    name.includes('\\')
+  ) {
+    throw new Error(`Unsafe download destination file name: ${request.destinationPath}`);
+  }
+
+  // Any '..' segment in the supplied destination means it escapes the intended
+  // local directory once resolved.
+  const segments = request.destinationPath.split(/[\\/]+/);
+  if (segments.some((segment) => segment === '..')) {
+    throw new Error(
+      `Download destination escapes the local directory: ${request.destinationPath}`,
+    );
+  }
+
+  // Defense in depth: the resolved destination must stay a direct child of its
+  // own directory.
+  if (path.dirname(path.resolve(dir, name)) !== path.resolve(dir)) {
+    throw new Error(
+      `Download destination escapes the local directory: ${request.destinationPath}`,
+    );
+  }
+
+  // The destination file name must match the remote entry name. Remote paths use
+  // POSIX separators (S3 keys, SFTP/rsync paths) even on Windows; mounted network
+  // filesystems use local paths.
+  const remoteName =
+    request.connectionType === 's3' ||
+    request.connectionType === 'sftp' ||
+    request.connectionType === 'rsync'
+      ? path.posix.basename(request.sourcePath)
+      : path.basename(request.sourcePath);
+  if (name !== remoteName) {
+    throw new Error(
+      `Download destination file name does not match the remote file name: ${request.destinationPath}`,
+    );
+  }
 }
 
 function normalizeS3Prefix(sourcePath: string): string {
@@ -289,6 +344,11 @@ export function registerTransferHandlers(
             }
             return [];
           } else if (request.connectionType === 'sftp' || request.connectionType === 'rsync') {
+            // Validate declared single-file destinations before touching the
+            // remote so an unsafe path fails without a stat round-trip.
+            if (request.isDirectory === false) {
+              assertSafeSingleFileDownloadDestination(request);
+            }
             const service = request.connectionType === 'rsync' ? rsyncService : sftpService;
             const client = service.getClient(request.connectionId);
             const stat = await client.stat(request.sourcePath);
@@ -372,6 +432,9 @@ export function registerTransferHandlers(
       }
 
       // Single file
+      if (request.direction === 'download') {
+        assertSafeSingleFileDownloadDestination(request);
+      }
       const id = await enqueueTransfer(request);
       console.log(`[Aether] Transfer queued: ${id}`);
       return id;
@@ -385,8 +448,15 @@ export function registerTransferHandlers(
     },
   );
 
-  ipcMain.handle(IpcChannels.TRANSFER_CLEAR, async () => {
-    transferService.clear();
+  ipcMain.handle(IpcChannels.TRANSFER_CLEAR, async (_event, statuses?: TerminalTransferStatus[]) => {
+    const allowed: TerminalTransferStatus[] = ['completed', 'failed', 'cancelled'];
+    if (
+      statuses !== undefined &&
+      (!Array.isArray(statuses) || statuses.some((s) => !allowed.includes(s)))
+    ) {
+      throw new Error('Invalid statuses: expected an array of completed, failed, or cancelled');
+    }
+    transferService.clear(statuses);
   });
 
   ipcMain.handle(IpcChannels.TRANSFER_LIST, async () => {

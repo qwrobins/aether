@@ -167,6 +167,57 @@ describe('S3Service', () => {
     } as never)).toThrow('AWS profile name is required');
   });
 
+  it('rejects insecure custom endpoints and allows https or loopback http', async () => {
+    S3Client.mockImplementation(function S3ClientMock() {
+      return { destroy: vi.fn() };
+    });
+
+    const { S3Service } = await import('../s3.service');
+    const service = new S3Service();
+
+    const profile = (id: string, endpoint: string) => ({
+      id,
+      name: id,
+      type: 's3' as const,
+      region: 'us-east-1',
+      authMethod: 'credentials' as const,
+      accessKeyId: 'AKIA123',
+      secretAccessKey: 'secret',
+      endpoint,
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    });
+
+    expect(() => service.connect('plain-http', profile('plain-http', 'http://minio.example.com:9000')))
+      .toThrow('custom endpoints must use https');
+    expect(() => service.connect('bad-url', profile('bad-url', 'not a url')))
+      .toThrow('Invalid S3 endpoint URL');
+
+    expect(() => service.connect('minio-local', profile('minio-local', 'http://localhost:9000'))).not.toThrow();
+    expect(() => service.connect('minio-loopback', profile('minio-loopback', 'http://127.0.0.1:9000'))).not.toThrow();
+    expect(() => service.connect('secure', profile('secure', 'https://objects.example.com'))).not.toThrow();
+    expect(S3Client).toHaveBeenLastCalledWith(expect.objectContaining({
+      endpoint: 'https://objects.example.com',
+      forcePathStyle: true,
+    }));
+  });
+
+  it('destroys the IAM client when listing roles fails', async () => {
+    const iamDestroy = vi.fn();
+    IAMClient.mockImplementation(function IAMClientMock() {
+      return {
+        send: vi.fn().mockRejectedValue(new Error('iam down')),
+        destroy: iamDestroy,
+      };
+    });
+
+    const { S3Service } = await import('../s3.service');
+    const service = new S3Service();
+
+    await expect(service.listRoles('us-east-1')).rejects.toThrow('iam down');
+    expect(iamDestroy).toHaveBeenCalled();
+  });
+
   it('lists buckets, roles, creates folders, and deletes single objects', async () => {
     const client = {
       send: vi.fn()

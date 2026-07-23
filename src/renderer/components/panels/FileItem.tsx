@@ -1,4 +1,6 @@
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
+import { beginInternalDrag, endInternalDrag } from '@/lib/drag-guard';
 import { FileIcon } from '@/components/shared/FileIcon';
 import { FileSize } from '@/components/shared/FileSize';
 import { TableRow, TableCell } from '@/components/ui/table';
@@ -49,7 +51,31 @@ function getFileNameParts(
   return { base: name.slice(0, lastDot), ext: name.slice(lastDot) };
 }
 
-export function FileItem({
+function areFileItemPropsEqual(prev: FileItemProps, next: FileItemProps): boolean {
+  if (
+    prev.entry !== next.entry ||
+    prev.index !== next.index ||
+    prev.isSelected !== next.isSelected ||
+    prev.allEntries !== next.allEntries ||
+    prev.panelType !== next.panelType ||
+    prev.onSelect !== next.onSelect ||
+    prev.onNavigate !== next.onNavigate ||
+    prev.onDelete !== next.onDelete ||
+    prev.onRename !== next.onRename ||
+    prev.onTransfer !== next.onTransfer
+  ) {
+    return false;
+  }
+  // A new selection Set is irrelevant to rows that are unselected in both
+  // renders: they never read selectedFiles. Selected rows must re-render so
+  // their drag/delete handlers capture the current selection.
+  if (prev.isSelected || next.isSelected) {
+    return prev.selectedFiles === next.selectedFiles;
+  }
+  return true;
+}
+
+export const FileItem = memo(function FileItem({
   entry,
   index,
   isSelected,
@@ -63,6 +89,7 @@ export function FileItem({
   onTransfer,
 }: FileItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
+    beginInternalDrag(e.dataTransfer);
     const draggedEntries = isSelected
       ? allEntries.filter((f) => selectedFiles.has(f.path))
       : [entry];
@@ -81,6 +108,10 @@ export function FileItem({
       JSON.stringify(payload),
     );
     e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const handleDragEnd = () => {
+    endInternalDrag();
   };
 
   const { base, ext } = getFileNameParts(entry.name, entry.isDirectory);
@@ -111,6 +142,7 @@ export function FileItem({
         data-state={isSelected ? 'selected' : undefined}
         draggable
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onClick={(e) =>
           onSelect(entry.path, e.ctrlKey || e.metaKey, e.shiftKey)
         }
@@ -196,4 +228,4 @@ export function FileItem({
       </TableRow>
     </FileContextMenu>
   );
-}
+}, areFileItemPropsEqual);
