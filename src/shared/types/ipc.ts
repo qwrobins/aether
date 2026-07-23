@@ -64,9 +64,6 @@ export interface IpcInvokeMap {
   'dialog:open-file': { args: [options?: { title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }]; return: string | null };
   'dialog:open-directory': { args: [defaultPath?: string]; return: string | null };
 
-  // Shell
-  'shell:open-external': { args: [url: string]; return: void };
-
   // Connections
   'conn:save': { args: [profile: ConnectionProfile]; return: string };
   'conn:delete': { args: [id: string]; return: void };
@@ -74,6 +71,7 @@ export interface IpcInvokeMap {
   'conn:test': { args: [profile: ConnectionProfile]; return: boolean };
   'conn:connect': { args: [id: string]; return: ConnectionConnectResult };
   'conn:disconnect': { args: [id: string]; return: void };
+  'conn:trust-host-key': { args: [id: string, fingerprint: string]; return: boolean };
 
   // Transfers
   'transfer:start': { args: [request: TransferRequest]; return: string | TransferItem[] };

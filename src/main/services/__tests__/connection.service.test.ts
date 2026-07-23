@@ -258,4 +258,100 @@ describe('ConnectionService', () => {
     expect(saved.password).toBe('');
     expect(encryptString).not.toHaveBeenCalledWith('hunter2');
   });
+
+  it('rejects non-object profiles and unknown profile types when saving', async () => {
+    readStore.mockReturnValue({ connections: [] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect(() => service.save(null as never)).toThrow(
+      'Invalid connection profile: expected a plain object',
+    );
+    expect(() => service.save(['not-a-profile'] as never)).toThrow(
+      'Invalid connection profile: expected a plain object',
+    );
+    expect(() => service.save({ name: 'Mystery', type: 'carrier-pigeon' } as never)).toThrow(
+      'Invalid connection profile type: carrier-pigeon',
+    );
+    expect(writeStore).not.toHaveBeenCalled();
+  });
+
+  it('rejects profiles with non-string id or field values', async () => {
+    readStore.mockReturnValue({ connections: [] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect(() =>
+      service.save({
+        name: 'Bad Host',
+        type: 'sftp',
+        host: { evil: true },
+        port: 22,
+        username: 'deploy',
+        authMethod: 'password',
+      } as never),
+    ).toThrow('Invalid connection profile: "host" must be a string');
+    expect(() =>
+      service.save({
+        id: 42,
+        name: 'Bad Id',
+        type: 's3',
+        region: 'us-east-1',
+        authMethod: 'credentials',
+      } as never),
+    ).toThrow('Invalid connection profile: id must be a string');
+    expect(writeStore).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a stored profile has an unknown type', async () => {
+    readStore.mockReturnValue({
+      connections: [{ id: 'conn-x', name: 'Mystery', type: 'carrier-pigeon' }],
+    });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect(() => service.list()).toThrow('Unknown connection profile type: carrier-pigeon');
+  });
+
+  it('persists a trusted host key fingerprint without re-encrypting stored secrets', async () => {
+    const existing = {
+      id: 'conn-ssh',
+      name: 'Remote Host',
+      type: 'sftp',
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      authMethod: 'password',
+      password: Buffer.from('enc:hunter2').toString('base64'),
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    } as SftpConnectionProfile;
+
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+    service.trustHostKey('conn-ssh', 'SHA256:abc123');
+
+    const saved = writeStore.mock.calls[0][0].connections[0] as SftpConnectionProfile;
+    expect(saved.hostKeyFingerprint).toBe('SHA256:abc123');
+    expect(saved.updatedAt).not.toBe('2026-03-07T10:00:00.000Z');
+    expect(saved.password).toBe(existing.password);
+    expect(encryptString).not.toHaveBeenCalled();
+  });
+
+  it('refuses to trust a host key for an unknown connection id', async () => {
+    readStore.mockReturnValue({ connections: [] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect(() => service.trustHostKey('missing', 'SHA256:abc123')).toThrow(
+      'Connection not found: missing',
+    );
+    expect(writeStore).not.toHaveBeenCalled();
+  });
 });

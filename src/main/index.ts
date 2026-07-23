@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
 import { registerAllIpcHandlers } from './ipc';
+import { getTransferService } from './ipc/transfer.handlers';
 
 /** Resolve the app icon path for both dev and packaged builds. */
 function getIconPath(): string {
@@ -105,6 +106,11 @@ const createWindow = () => {
   }
 
   mainWindow.on('closed', () => {
+    // Drop the destroyed window so transfer events are not sent to it while a
+    // new window has not been created yet (e.g. macOS activate flow).
+    if (mainWindow) {
+      getTransferService().clearWindow(mainWindow);
+    }
     mainWindow = null;
   });
 };

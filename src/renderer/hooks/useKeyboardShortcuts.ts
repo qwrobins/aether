@@ -5,6 +5,10 @@ import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { usePromptStore } from '@/stores/promptStore';
 import { getSftpDeleteErrorMessage } from '@/lib/remote';
 
+function joinLocalPath(basePath: string, name: string): string {
+  return `${basePath.replace(/\/+$/, '')}/${name}`;
+}
+
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -41,12 +45,24 @@ export function useKeyboardShortcuts() {
             if (confirm(`Delete ${paths.length} remote item(s)?`)) {
               const connectionId = remoteStore.activeConnectionId as string;
               const bucket = remoteStore.currentBucket as string;
-              Promise.all(
+              Promise.allSettled(
                 paths.map((p) =>
                   window.api.invoke('s3:delete-object', connectionId, bucket, p)
                 )
               )
-                .then(() => remoteStore.refresh())
+                .then(async (results) => {
+                  const failures = results.filter(
+                    (r): r is PromiseRejectedResult => r.status === 'rejected'
+                  );
+                  await remoteStore.refresh();
+                  if (failures.length > 0) {
+                    const reason = failures[0].reason;
+                    console.error('[Aether] S3 delete partially failed:', reason);
+                    toast.error(
+                      `Failed to delete ${failures.length} of ${paths.length}: ${reason instanceof Error ? reason.message : String(reason)}`
+                    );
+                  }
+                })
                 .catch((err) => {
                   console.error('[Aether] S3 delete failed:', err);
                   toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -91,10 +107,15 @@ export function useKeyboardShortcuts() {
 
       if (isCtrl && e.key === 'a') {
         e.preventDefault();
-        const localStore = useLocalPanelStore.getState();
-        const remoteStore = useRemotePanelStore.getState();
-        if (localStore.entries.length > 0) localStore.selectAll();
-        if (remoteStore.entries.length > 0) remoteStore.selectAll();
+        // Select-all applies only to the focused panel; without panel focus, do nothing.
+        const focusedPanel = document.activeElement?.closest('[data-panel]')?.getAttribute('data-panel');
+        if (focusedPanel === 'local') {
+          const localStore = useLocalPanelStore.getState();
+          if (localStore.entries.length > 0) localStore.selectAll();
+        } else if (focusedPanel === 'remote') {
+          const remoteStore = useRemotePanelStore.getState();
+          if (remoteStore.entries.length > 0) remoteStore.selectAll();
+        }
       }
 
       if (isCtrl && e.key === 'r') {
@@ -113,8 +134,14 @@ export function useKeyboardShortcuts() {
           });
           if (name) {
             const localStore = useLocalPanelStore.getState();
-            const newPath = localStore.currentPath + '/' + name;
-            window.api.invoke('fs:mkdir', newPath).then(() => localStore.refresh());
+            const newPath = joinLocalPath(localStore.currentPath, name);
+            window.api
+              .invoke('fs:mkdir', newPath)
+              .then(() => localStore.refresh())
+              .catch((err) => {
+                console.error('[Aether] New folder failed:', err);
+                toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+              });
           }
         })();
       }
@@ -133,7 +160,13 @@ export function useKeyboardShortcuts() {
             });
             if (newName && newName !== oldName) {
               const newPath = oldPath.replace(/[^/]+$/, newName);
-              window.api.invoke('fs:rename', oldPath, newPath).then(() => localStore.refresh());
+              window.api
+                .invoke('fs:rename', oldPath, newPath)
+                .then(() => localStore.refresh())
+                .catch((err) => {
+                  console.error('[Aether] Rename failed:', err);
+                  toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
+                });
             }
           }
         })();

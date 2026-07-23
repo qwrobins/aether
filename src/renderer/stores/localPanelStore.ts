@@ -28,6 +28,14 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
   const files = entries.filter((e) => !e.isDirectory);
   const multiplier = direction === 'asc' ? 1 : -1;
 
+  // Precompute timestamps once so the comparator does not re-parse dates.
+  const modifiedTimes = new Map<FileEntry, number>();
+  if (field === 'modifiedAt') {
+    for (const entry of entries) {
+      modifiedTimes.set(entry, new Date(entry.modifiedAt).getTime());
+    }
+  }
+
   const sorter = (a: FileEntry, b: FileEntry) => {
     switch (field) {
       case 'name':
@@ -35,7 +43,7 @@ function sortEntries(entries: FileEntry[], field: SortField, direction: SortDire
       case 'size':
         return multiplier * (a.size - b.size);
       case 'modifiedAt':
-        return multiplier * (new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime());
+        return multiplier * ((modifiedTimes.get(a) ?? 0) - (modifiedTimes.get(b) ?? 0));
       default:
         return 0;
     }

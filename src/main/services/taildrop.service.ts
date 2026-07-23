@@ -59,11 +59,23 @@ function getCommandCandidates(): string[] {
     : [TAILSCALE_COMMAND];
 }
 
+/**
+ * Run tailscale with a minimal environment so secrets present in the parent
+ * process environment (tokens, credentials) are never leaked to the child.
+ */
 function getTailscaleEnv(): NodeJS.ProcessEnv {
-  return {
-    ...process.env,
+  const env: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
     SHLVL: process.env.SHLVL ?? '1',
   };
+  if (process.env.LANG) env.LANG = process.env.LANG;
+  if (process.env.LC_ALL) env.LC_ALL = process.env.LC_ALL;
+  if (process.platform === 'win32') {
+    if (process.env.SYSTEMROOT) env.SYSTEMROOT = process.env.SYSTEMROOT;
+    if (process.env.ComSpec) env.ComSpec = process.env.ComSpec;
+  }
+  return env;
 }
 
 function parseTargetLine(line: string): TaildropTarget | null {

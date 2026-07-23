@@ -19,6 +19,8 @@ export const usePromptStore = create<PromptState>((set, get) => ({
 
   open: (opts) =>
     new Promise<string | null>((resolve) => {
+      // Resolve any orphaned prompt so its caller is not left hanging.
+      get().resolve?.(null);
       set({
         isOpen: true,
         title: opts.title,

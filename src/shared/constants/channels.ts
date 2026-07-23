@@ -47,6 +47,7 @@ export const IpcChannels = {
   CONN_TEST: 'conn:test',
   CONN_CONNECT: 'conn:connect',
   CONN_DISCONNECT: 'conn:disconnect',
+  CONN_TRUST_HOST_KEY: 'conn:trust-host-key',
 
   // Transfers
   TRANSFER_START: 'transfer:start',
@@ -62,9 +63,6 @@ export const IpcChannels = {
   // Dialogs
   DIALOG_OPEN_FILE: 'dialog:open-file',
   DIALOG_OPEN_DIRECTORY: 'dialog:open-directory',
-
-  // Shell
-  SHELL_OPEN_EXTERNAL: 'shell:open-external',
 
   // Window controls
   WINDOW_CLOSE: 'window:close',

@@ -42,6 +42,18 @@ describe('preload bridge', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('allows the host-key trust channel and blocks the removed shell channel', async () => {
+    invoke.mockResolvedValue(true);
+    const api = exposeInMainWorld.mock.calls[0][1];
+
+    await expect(api.invoke('conn:trust-host-key', 'conn-1', 'SHA256:abc')).resolves.toBe(true);
+
+    expect(invoke).toHaveBeenCalledWith('conn:trust-host-key', 'conn-1', 'SHA256:abc');
+    expect(() => api.invoke('shell:open-external', 'https://example.com')).toThrow(
+      'Blocked IPC channel: shell:open-external',
+    );
+  });
+
   it('does not expose bulk listener removal', () => {
     const api = exposeInMainWorld.mock.calls[0][1];
 

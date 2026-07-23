@@ -1,8 +1,16 @@
-import { type OpenDialogOptions, dialog, shell, BrowserWindow } from 'electron';
+import { type OpenDialogOptions, dialog, BrowserWindow } from 'electron';
 import { platform } from 'node:os';
 import { FilesystemService } from '../services/filesystem.service';
 import { IpcChannels } from '@shared/constants/channels';
 import type { IpcMainHandle } from './ipc-main-handle';
+
+const DEVICE_PATH_PATTERN = /^\/dev\/[A-Za-z0-9._-]+$/;
+
+function assertNonEmptyPath(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Invalid ${label}: expected a non-empty string`);
+  }
+}
 
 export function registerFilesystemHandlers(ipcMain: IpcMainHandle): void {
   const fs = new FilesystemService();
@@ -27,16 +35,26 @@ export function registerFilesystemHandlers(ipcMain: IpcMainHandle): void {
   });
 
   ipcMain.handle(IpcChannels.FS_MKDIR, async (_event, dirPath: string) => {
+    assertNonEmptyPath(dirPath, 'path');
     return fs.mkdir(dirPath);
   });
 
   ipcMain.handle(IpcChannels.FS_DELETE, async (_event, paths: string[]) => {
+    if (
+      !Array.isArray(paths) ||
+      paths.length === 0 ||
+      paths.some((p) => typeof p !== 'string' || p.trim().length === 0)
+    ) {
+      throw new Error('Invalid paths: expected a non-empty array of non-empty strings');
+    }
     return fs.remove(paths);
   });
 
   ipcMain.handle(
     IpcChannels.FS_RENAME,
     async (_event, oldPath: string, newPath: string) => {
+      assertNonEmptyPath(oldPath, 'oldPath');
+      assertNonEmptyPath(newPath, 'newPath');
       return fs.rename(oldPath, newPath);
     },
   );
@@ -50,6 +68,9 @@ export function registerFilesystemHandlers(ipcMain: IpcMainHandle): void {
   });
 
   ipcMain.handle(IpcChannels.FS_MOUNT_DRIVE, async (_event, devicePath: string) => {
+    if (typeof devicePath !== 'string' || !DEVICE_PATH_PATTERN.test(devicePath)) {
+      throw new Error(`Invalid device path: expected a /dev/ device node, got ${String(devicePath)}`);
+    }
     return fs.mountDrive(devicePath);
   });
 
@@ -59,17 +80,6 @@ export function registerFilesystemHandlers(ipcMain: IpcMainHandle): void {
       fs.openInExplorer(path);
     },
   );
-
-  ipcMain.handle(IpcChannels.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
-    if (typeof url !== 'string' || url.trim().length === 0) {
-      throw new Error('Invalid url: expected a non-empty string');
-    }
-    const trimmedUrl = url.trim();
-    if (!/^(https?|x-apple\.systempreferences):/.test(trimmedUrl)) {
-      throw new Error(`Blocked unsafe URL scheme: ${trimmedUrl}`);
-    }
-    await shell.openExternal(trimmedUrl);
-  });
 
   ipcMain.handle(IpcChannels.DIALOG_OPEN_DIRECTORY, async (_event, defaultPath?: string) => {
     const parentWindow = BrowserWindow.getFocusedWindow();

@@ -1,15 +1,25 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { IpcChannels } from '@shared/constants/channels';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useRemotePanelStore } from '@/stores/remotePanelStore';
 import { useTransferStore } from '@/stores/transferStore';
 import { usePromptStore } from '@/stores/promptStore';
+import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
 import type { FileEntry } from '@shared/types/filesystem';
+import type { ConnectionProfile } from '@shared/types/connection';
 import type { TransferRequest } from '@shared/types/transfer';
+
+function isMountableProfile(profile: ConnectionProfile): boolean {
+  return profile.type === 'smb' || profile.type === 'nfs' || profile.type === 'webdav';
+}
+
+function joinLocalPath(basePath: string, name: string): string {
+  return `${basePath.replace(/\/+$/, '')}/${name}`;
+}
 
 export function LocalPanel() {
   const {
@@ -38,7 +48,7 @@ export function LocalPanel() {
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     // Only accept drops from the remote panel
-    if (e.dataTransfer.types.includes('application/aether-transfer')) {
+    if (e.dataTransfer.types.includes('application/aether-transfer') && isInternalDrag()) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setIsDragOver(true);
@@ -55,14 +65,17 @@ export function LocalPanel() {
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
+      const internal = consumeInternalDrag();
 
       const raw = e.dataTransfer.getData('application/aether-transfer');
-      if (!raw) return;
+      // Ignore forged payloads: content outside this window can set the same
+      // MIME type to download remote files over attacker-chosen local paths.
+      if (!raw || !internal) return;
+
+      const payload = parseDragTransferPayload(raw);
+      if (!payload || payload.panelType !== 'remote') return;
 
       try {
-        const payload = JSON.parse(raw);
-        if (payload.panelType !== 'remote') return;
-
         const { activeConnectionId, activeProfile, currentBucket } =
           useRemotePanelStore.getState();
         if (!activeConnectionId || !activeProfile) return;
@@ -71,12 +84,12 @@ export function LocalPanel() {
         for (const entry of payload.entries) {
           const request: TransferRequest = {
             sourcePath: entry.path,
-            destinationPath: `${currentPath}/${entry.name}`,
+            destinationPath: joinLocalPath(currentPath, entry.name),
             direction: 'download',
             connectionId: activeConnectionId,
             connectionType: activeProfile.type,
             bucket: currentBucket || undefined,
-            isDirectory: Boolean(entry.isDirectory),
+            isDirectory: entry.isDirectory,
           };
 
           const result = await window.api.invoke('transfer:start', request);
@@ -131,7 +144,8 @@ export function LocalPanel() {
         const newPath = oldPath.replace(/[^/]+$/, newName);
         try {
           await window.api.invoke('fs:rename', oldPath, newPath);
-          refresh();
+          // refresh handles listing errors internally via store state.
+          void refresh();
         } catch (err) {
           console.error('[Aether] Rename failed:', err);
           toast.error(`Rename failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -147,52 +161,73 @@ export function LocalPanel() {
       placeholder: 'Folder name',
     });
     if (name) {
-      const newPath = currentPath + '/' + name;
-      window.api.invoke('fs:mkdir', newPath).then(() => refresh());
+      const newPath = joinLocalPath(currentPath, name);
+      window.api
+        .invoke('fs:mkdir', newPath)
+        .then(() => refresh())
+        .catch((err) => {
+          console.error('[Aether] New folder failed:', err);
+          toast.error(`New folder failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
     }
   }, [currentPath, refresh]);
 
+  // Guards against rapid double-clicks enqueueing a duplicate transfer while
+  // the transfer:start invoke is still pending.
+  const transferStartPending = useRef(false);
+
   const handleTransfer = useCallback(
     async (entry: FileEntry) => {
+      if (transferStartPending.current) return;
       const { activeConnectionId, activeProfile, currentPath: remotePath, currentBucket } =
         useRemotePanelStore.getState();
       if (!activeConnectionId || !activeProfile) return;
 
-      const destPath =
-        activeProfile.type === 'sftp'
-          ? `${remotePath.replace(/\/+$/, '')}/${entry.name}`
-          : `${remotePath}${entry.name}`;
+      transferStartPending.current = true;
+      try {
+        const destPath =
+          activeProfile.type === 'sftp' ||
+          activeProfile.type === 'rsync' ||
+          isMountableProfile(activeProfile)
+            ? `${remotePath.replace(/\/+$/, '')}/${entry.name}`
+            : `${remotePath}${entry.name}`;
 
-      const request: TransferRequest = {
-        sourcePath: entry.path,
-        destinationPath: destPath,
-        direction: 'upload',
-        connectionId: activeConnectionId,
-        connectionType: activeProfile.type,
-        bucket: currentBucket || undefined,
-        isDirectory: entry.isDirectory,
-      };
-
-      const result = await window.api.invoke('transfer:start', request);
-      const { addTransfer, addTransfers } = useTransferStore.getState();
-      if (Array.isArray(result)) {
-        addTransfers(result);
-      } else {
-        addTransfer({
-          id: result,
-          fileName: entry.name,
-          sourcePath: request.sourcePath,
-          destinationPath: request.destinationPath,
+        const request: TransferRequest = {
+          sourcePath: entry.path,
+          destinationPath: destPath,
           direction: 'upload',
           connectionId: activeConnectionId,
           connectionType: activeProfile.type,
-          bucket: request.bucket,
-          size: entry.size || 0,
-          bytesTransferred: 0,
-          status: 'queued',
-          speed: 0,
-          retryCount: 0,
-        });
+          bucket: currentBucket || undefined,
+          isDirectory: entry.isDirectory,
+        };
+
+        const result = await window.api.invoke('transfer:start', request);
+        const { addTransfer, addTransfers } = useTransferStore.getState();
+        if (Array.isArray(result)) {
+          addTransfers(result);
+        } else {
+          addTransfer({
+            id: result,
+            fileName: entry.name,
+            sourcePath: request.sourcePath,
+            destinationPath: request.destinationPath,
+            direction: 'upload',
+            connectionId: activeConnectionId,
+            connectionType: activeProfile.type,
+            bucket: request.bucket,
+            size: entry.size || 0,
+            bytesTransferred: 0,
+            status: 'queued',
+            speed: 0,
+            retryCount: 0,
+          });
+        }
+      } catch (err) {
+        console.error('[Aether] Transfer start failed:', err);
+        toast.error(`Transfer failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        transferStartPending.current = false;
       }
     },
     []

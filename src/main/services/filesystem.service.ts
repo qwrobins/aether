@@ -3,18 +3,18 @@ import {
   stat as fsStat,
   access,
   mkdir as fsMkdir,
-  rm,
   rename as fsRename,
 } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { shell } from 'electron';
 import type { FileEntry, DirectoryListing, DriveInfo } from '@shared/types/filesystem';
 
 const execFileAsync = promisify(execFile);
 const DIRECTORY_STAT_CONCURRENCY = 32;
+const DEVICE_PATH_PATTERN = /^\/dev\/[A-Za-z0-9._-]+$/;
 
 interface RecursiveListOptions {
   maxFiles?: number;
@@ -129,9 +129,27 @@ export class FilesystemService {
   }
 
   async remove(paths: string[]): Promise<void> {
-    await Promise.all(
-      paths.map((p) => rm(p, { recursive: true, force: true })),
-    );
+    await Promise.all(paths.map((p) => this.trashPath(p)));
+  }
+
+  /** Move a single path to the trash, refusing catastrophic delete targets. */
+  private async trashPath(filePath: string): Promise<void> {
+    const resolvedPath = resolve(filePath);
+    const segmentCount = resolvedPath.split(sep).filter(Boolean).length;
+    if (segmentCount < 2) {
+      throw new Error(
+        `Refusing to delete "${resolvedPath}": path is too close to the filesystem root`,
+      );
+    }
+    if (resolvedPath === resolve(homedir())) {
+      throw new Error(`Refusing to delete "${resolvedPath}": cannot delete the home directory`);
+    }
+    try {
+      await shell.trashItem(resolvedPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      throw new Error(`Failed to move "${resolvedPath}" to the trash: ${message}`);
+    }
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
@@ -143,7 +161,9 @@ export class FilesystemService {
   }
 
   openInExplorer(filePath: string): void {
-    shell.openPath(filePath);
+    // Reveal the file in the OS file manager instead of opening it, so
+    // executables and scripts are never launched from this action.
+    shell.showItemInFolder(resolve(filePath));
   }
 
   async listDrives(): Promise<DriveInfo[]> {
@@ -168,6 +188,13 @@ export class FilesystemService {
 
   /** Mount an unmounted partition via udisksctl. Returns the mount path. */
   async mountDrive(devicePath: string): Promise<string> {
+    if (!DEVICE_PATH_PATTERN.test(devicePath)) {
+      throw new Error(`Invalid device path: expected a /dev/ device node, got ${devicePath}`);
+    }
+    const drives = await this.listDrives();
+    if (!drives.some((drive) => drive.devicePath === devicePath)) {
+      throw new Error(`Refusing to mount ${devicePath}: not a known mountable device`);
+    }
     const { stdout } = await execFileAsync('udisksctl', ['mount', '-b', devicePath]);
     // udisksctl outputs: "Mounted /dev/sdc1 at /run/media/user/Label."
     const match = stdout.match(/at (.+?)\.?\s*$/);

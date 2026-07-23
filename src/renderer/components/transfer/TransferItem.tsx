@@ -44,7 +44,10 @@ export function TransferItem({ transfer: t }: Props) {
   const isTerminal = ['completed', 'failed', 'cancelled'].includes(t.status);
 
   const handleCancel = () => {
-    window.api.invoke('transfer:cancel', t.id);
+    void window.api.invoke('transfer:cancel', t.id).catch((err) => {
+      console.error('[Aether] Transfer cancel failed:', err);
+      toast.error(`Cancel failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
   };
 
   const handleRetry = async () => {

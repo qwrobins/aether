@@ -68,6 +68,61 @@ function isDirectoryRequest(request: TransferRequest): boolean {
   return request.isDirectory ?? request.sourcePath.endsWith('/');
 }
 
+/**
+ * Guard the single-file download path against malicious remote names. The renderer
+ * builds the destination as `localDir + '/' + remoteName`, and a hostile SFTP server
+ * or S3 key can supply a name containing `/`, `\`, or `..` (e.g.
+ * `../../.ssh/authorized_keys`). Directory downloads are expanded through
+ * safeJoinDownloadDestination instead and never reach this check.
+ */
+function assertSafeSingleFileDownloadDestination(request: TransferRequest): void {
+  const dir = path.dirname(request.destinationPath);
+  const name = path.basename(request.destinationPath);
+
+  // The final name must be a plain file name: no traversal, no separators.
+  if (
+    name.length === 0 ||
+    name === '.' ||
+    name === '..' ||
+    name.includes('/') ||
+    name.includes('\\')
+  ) {
+    throw new Error(`Unsafe download destination file name: ${request.destinationPath}`);
+  }
+
+  // Any '..' segment in the supplied destination means it escapes the intended
+  // local directory once resolved.
+  const segments = request.destinationPath.split(/[\\/]+/);
+  if (segments.some((segment) => segment === '..')) {
+    throw new Error(
+      `Download destination escapes the local directory: ${request.destinationPath}`,
+    );
+  }
+
+  // Defense in depth: the resolved destination must stay a direct child of its
+  // own directory.
+  if (path.dirname(path.resolve(dir, name)) !== path.resolve(dir)) {
+    throw new Error(
+      `Download destination escapes the local directory: ${request.destinationPath}`,
+    );
+  }
+
+  // The destination file name must match the remote entry name. Remote paths use
+  // POSIX separators (S3 keys, SFTP/rsync paths) even on Windows; mounted network
+  // filesystems use local paths.
+  const remoteName =
+    request.connectionType === 's3' ||
+    request.connectionType === 'sftp' ||
+    request.connectionType === 'rsync'
+      ? path.posix.basename(request.sourcePath)
+      : path.basename(request.sourcePath);
+  if (name !== remoteName) {
+    throw new Error(
+      `Download destination file name does not match the remote file name: ${request.destinationPath}`,
+    );
+  }
+}
+
 function normalizeS3Prefix(sourcePath: string): string {
   return sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`;
 }
@@ -372,6 +427,9 @@ export function registerTransferHandlers(
       }
 
       // Single file
+      if (request.direction === 'download') {
+        assertSafeSingleFileDownloadDestination(request);
+      }
       const id = await enqueueTransfer(request);
       console.log(`[Aether] Transfer queued: ${id}`);
       return id;

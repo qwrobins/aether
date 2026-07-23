@@ -511,6 +511,86 @@ describe('registerTransferHandlers', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
+  it('rejects single-file SFTP downloads with traversal in the remote name', async () => {
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: false }) };
+    getSftpClient.mockReturnValue(client);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 'sftp',
+        sourcePath: '/remote/../../.ssh/authorized_keys',
+        destinationPath: '/home/user/Downloads/../../.ssh/authorized_keys',
+        bucket: undefined,
+        isDirectory: false,
+      })),
+    ).rejects.toThrow('Download destination escapes the local directory');
+
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects single-file S3 downloads with traversal in the key name', async () => {
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 's3',
+        sourcePath: 'photos/../../.ssh/authorized_keys',
+        destinationPath: '/downloads/../../.ssh/authorized_keys',
+        bucket: 'images',
+        isDirectory: false,
+      })),
+    ).rejects.toThrow('Download destination escapes the local directory');
+
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects single-file downloads whose destination name differs from the remote name', async () => {
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: false }) };
+    getSftpClient.mockReturnValue(client);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    await expect(
+      handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+        direction: 'download',
+        connectionType: 'sftp',
+        sourcePath: '/remote/report.pdf',
+        destinationPath: '/local/downloads/renamed.pdf',
+        bucket: undefined,
+        isDirectory: false,
+      })),
+    ).rejects.toThrow('Download destination file name does not match the remote file name');
+
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('queues single-file SFTP downloads with a matching safe destination', async () => {
+    const client = { kind: 'sftp-client', stat: vi.fn().mockResolvedValue({ isDirectory: false }) };
+    getSftpClient.mockReturnValue(client);
+
+    const { handlers } = await createIpcHandlerSetup();
+
+    const result = await handlers.get(IpcChannels.TRANSFER_START)?.({}, createRequest({
+      direction: 'download',
+      connectionType: 'sftp',
+      sourcePath: '/remote/report.pdf',
+      destinationPath: '/local/downloads/report.pdf',
+      bucket: undefined,
+      isDirectory: false,
+    }));
+
+    expect(result).toBe('transfer-1');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0]).toMatchObject({
+      sourcePath: '/remote/report.pdf',
+      destinationPath: '/local/downloads/report.pdf',
+    });
+  });
+
   it('throws a clear IPC error and rolls back queued children when directory expansion enqueue fails', async () => {
     stat.mockResolvedValue({ isDirectory: true });
     listFilesRecursive.mockResolvedValue([

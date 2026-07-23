@@ -32,6 +32,9 @@ export function AppLayout() {
 
   const isDragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Mirrors transferHeight so the mouseup handler can persist the latest value
+  // without re-attaching window listeners on every drag frame.
+  const transferHeightRef = useRef(transferHeight);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -46,6 +49,7 @@ export function AppLayout() {
       const containerRect = containerRef.current.getBoundingClientRect();
       const maxHeight = containerRect.height * 0.6;
       const newHeight = Math.max(MIN_HEIGHT, Math.min(maxHeight, containerRect.bottom - e.clientY));
+      transferHeightRef.current = newHeight;
       setTransferHeight(newHeight);
     };
 
@@ -56,7 +60,7 @@ export function AppLayout() {
       document.body.style.userSelect = '';
       // Persist
       try {
-        localStorage.setItem(STORAGE_KEY, String(Math.round(transferHeight)));
+        localStorage.setItem(STORAGE_KEY, String(Math.round(transferHeightRef.current)));
       } catch { /* ignore */ }
     };
 
@@ -66,7 +70,7 @@ export function AppLayout() {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [transferHeight]);
+  }, []);
 
   return (
     <div

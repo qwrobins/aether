@@ -1,5 +1,6 @@
 import SftpClient from 'ssh2-sftp-client';
 import { homedir } from 'node:os';
+import { join, sep } from 'node:path';
 import type { DirectoryListing, FileEntry } from '@shared/types/filesystem';
 import type { SftpConnectionProfile } from '@shared/types/connection';
 import type {
@@ -32,6 +33,29 @@ function assertRecursiveLimit(count: number, maxFiles: number | undefined): void
 function formatHostKeyFingerprint(hashedKey: string): string {
   const digest = Buffer.from(hashedKey, 'hex').toString('base64').replace(/=+$/, '');
   return `SHA256:${digest}`;
+}
+
+/**
+ * Read an SSH private key, confining access to the user's ~/.ssh directory.
+ * Both paths are resolved with realpath so symlinks cannot escape the jail.
+ */
+async function readSshPrivateKey(privateKeyPath: string): Promise<string> {
+  const fs = await import('node:fs/promises');
+  const sshDir = join(homedir(), '.ssh');
+  let realKeyPath: string;
+  let realSshDir: string;
+  try {
+    [realKeyPath, realSshDir] = await Promise.all([
+      fs.realpath(expandTilde(privateKeyPath)),
+      fs.realpath(sshDir),
+    ]);
+  } catch {
+    throw new Error(`SSH private key is not readable: ${privateKeyPath}`);
+  }
+  if (realKeyPath !== realSshDir && !realKeyPath.startsWith(realSshDir + sep)) {
+    throw new Error(`SSH private key path must be inside ${sshDir}: ${privateKeyPath}`);
+  }
+  return fs.readFile(realKeyPath, 'utf-8');
 }
 
 export class UntrustedSshHostKeyError extends Error {
@@ -99,8 +123,7 @@ export class SftpService {
     if (profile.authMethod === 'password' && profile.password) {
       config.password = profile.password;
     } else if (profile.authMethod === 'key' && profile.privateKeyPath) {
-      const fs = await import('node:fs/promises');
-      config.privateKey = await fs.readFile(expandTilde(profile.privateKeyPath), 'utf-8');
+      config.privateKey = await readSshPrivateKey(profile.privateKeyPath);
       if (profile.passphrase) {
         config.passphrase = profile.passphrase;
       }
