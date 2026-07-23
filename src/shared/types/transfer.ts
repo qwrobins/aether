@@ -3,6 +3,7 @@ import type { ConnectionType } from './connection';
 export type TransferConnectionType = ConnectionType | 'taildrop';
 export type TransferDirection = 'upload' | 'download';
 export type TransferStatus = 'queued' | 'active' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type TerminalTransferStatus = Extract<TransferStatus, 'completed' | 'failed' | 'cancelled'>;
 
 export interface TransferRequest {
   sourcePath: string;

@@ -10,10 +10,12 @@ import { Upload } from '@aws-sdk/lib-storage';
 import type { Progress } from '@aws-sdk/lib-storage';
 import type {
   SftpTransferClient,
+  TerminalTransferStatus,
   TransferItem,
   TransferRequest,
   TransferProgress,
   TransferResult,
+  TransferStatus,
 } from '@shared/types/transfer';
 import { IpcChannels } from '@shared/constants/channels';
 
@@ -512,9 +514,10 @@ export class TransferService {
     });
   }
 
-  clear(): void {
+  clear(statuses: TerminalTransferStatus[] = ['completed', 'failed', 'cancelled']): void {
+    const targets = new Set<TransferStatus>(statuses);
     for (const [id, item] of this.transfers) {
-      if (['completed', 'failed', 'cancelled'].includes(item.status)) {
+      if (targets.has(item.status)) {
         this.transfers.delete(id);
         void this.cleanupTransferResources(id);
         this.terminalTransfers.delete(id);

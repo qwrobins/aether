@@ -179,16 +179,18 @@ export const useTransferStore = create<TransferState>((set, get) => ({
         (t) => !['completed', 'failed', 'cancelled'].includes(t.status)
       ),
     }));
-    // Let the main process drop its terminal transfer records too
-    void window.api.invoke('transfer:clear').catch(() => undefined);
+    // Let the main process drop the same terminal transfer records
+    void window.api
+      .invoke('transfer:clear', ['completed', 'failed', 'cancelled'])
+      .catch(() => undefined);
   },
 
   clearSuccessful: () => {
     set((s) => ({
       transfers: s.transfers.filter((t) => t.status !== 'completed'),
     }));
-    // Let the main process drop its terminal transfer records too
-    void window.api.invoke('transfer:clear').catch(() => undefined);
+    // Let the main process drop the same terminal transfer records
+    void window.api.invoke('transfer:clear', ['completed']).catch(() => undefined);
   },
 
   setTransfers: (transfers) => set({ transfers, batchProgress: buildBatchProgress(transfers) }),

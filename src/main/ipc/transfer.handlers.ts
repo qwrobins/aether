@@ -7,7 +7,7 @@ import { sftpService } from './sftp.handlers';
 import { rsyncService } from './rsync.handlers';
 import { networkFilesystemService } from './network-filesystem.handlers';
 import { IpcChannels } from '@shared/constants/channels';
-import type { TransferRequest, TransferItem } from '@shared/types/transfer';
+import type { TerminalTransferStatus, TransferRequest, TransferItem } from '@shared/types/transfer';
 import type { IpcMainHandle } from './ipc-main-handle';
 
 const transferService = new TransferService();
@@ -448,8 +448,15 @@ export function registerTransferHandlers(
     },
   );
 
-  ipcMain.handle(IpcChannels.TRANSFER_CLEAR, async () => {
-    transferService.clear();
+  ipcMain.handle(IpcChannels.TRANSFER_CLEAR, async (_event, statuses?: TerminalTransferStatus[]) => {
+    const allowed: TerminalTransferStatus[] = ['completed', 'failed', 'cancelled'];
+    if (
+      statuses !== undefined &&
+      (!Array.isArray(statuses) || statuses.some((s) => !allowed.includes(s)))
+    ) {
+      throw new Error('Invalid statuses: expected an array of completed, failed, or cancelled');
+    }
+    transferService.clear(statuses);
   });
 
   ipcMain.handle(IpcChannels.TRANSFER_LIST, async () => {

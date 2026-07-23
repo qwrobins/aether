@@ -472,6 +472,22 @@ describe('TransferService', () => {
     expect(service.getTransfers().map((item) => item.id)).toEqual(['queued']);
   });
 
+  it('clears only the requested terminal statuses', async () => {
+    const { TransferService } = await import('../transfer.service');
+    const service = new TransferService(1);
+    const internals = service as unknown as TransferServiceInternals;
+
+    internals.transfers = new Map<string, TransferItem>([
+      ['done', { ...createRequest(), id: 'done', fileName: 'done', size: 1, bytesTransferred: 1, status: 'completed', speed: 0, retryCount: 0 }],
+      ['failed', { ...createRequest(), id: 'failed', fileName: 'failed', size: 1, bytesTransferred: 0, status: 'failed', speed: 0, retryCount: 0 }],
+      ['cancelled', { ...createRequest(), id: 'cancelled', fileName: 'cancelled', size: 1, bytesTransferred: 0, status: 'cancelled', speed: 0, retryCount: 0 }],
+    ]);
+
+    service.clear(['completed']);
+
+    expect(service.getTransfers().map((item) => item.id).sort()).toEqual(['cancelled', 'failed']);
+  });
+
   it('downloads from S3 and creates the destination directory', async () => {
     const { TransferService } = await import('../transfer.service');
     const service = new TransferService(1);

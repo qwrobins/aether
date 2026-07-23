@@ -10,6 +10,7 @@ import type {
   TransferProgress,
   TransferResult,
   SftpDeleteResult,
+  TerminalTransferStatus,
 } from './transfer';
 import type {
   TaildropAvailability,
@@ -76,7 +77,7 @@ export interface IpcInvokeMap {
   // Transfers
   'transfer:start': { args: [request: TransferRequest]; return: string | TransferItem[] };
   'transfer:cancel': { args: [transferId: string]; return: void };
-  'transfer:clear': { args: []; return: void };
+  'transfer:clear': { args: [statuses?: TerminalTransferStatus[]]; return: void };
   'transfer:list': { args: []; return: TransferItem[] };
 
   // Window controls
