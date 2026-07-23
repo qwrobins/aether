@@ -89,7 +89,7 @@ export const FileItem = memo(function FileItem({
   onTransfer,
 }: FileItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
-    beginInternalDrag();
+    beginInternalDrag(e.dataTransfer);
     const draggedEntries = isSelected
       ? allEntries.filter((f) => selectedFiles.has(f.path))
       : [entry];

@@ -127,7 +127,7 @@ export function RemotePanel() {
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const internal = consumeInternalDrag();
+      const internal = consumeInternalDrag(e.dataTransfer);
 
       if (!activeConnectionId || !activeProfile) return;
 

@@ -40,6 +40,22 @@ function forgedDataTransfer(raw: string): DataTransfer {
   } as unknown as DataTransfer;
 }
 
+function internalDataTransfer(raw: string): DataTransfer {
+  const store = new Map<string, string>();
+  const dt = {
+    types: ['application/aether-transfer'],
+    setData: (type: string, value: string) => {
+      store.set(type, value);
+    },
+    getData: (type: string) =>
+      store.get(type) ?? (type === 'application/aether-transfer' ? raw : ''),
+    files: { length: 0 },
+  } as unknown as DataTransfer;
+  // Registers the per-drag token into the DataTransfer, like FileItem does.
+  beginInternalDrag(dt);
+  return dt;
+}
+
 describe('LocalPanel drop guard', () => {
   beforeEach(() => {
     endInternalDrag();
@@ -90,8 +106,7 @@ describe('LocalPanel drop guard', () => {
     const panel = container.querySelector('[data-panel="local"]');
     expect(panel).not.toBeNull();
 
-    beginInternalDrag();
-    fireEvent.drop(panel as Element, { dataTransfer: forgedDataTransfer(remotePayloadRaw()) });
+    fireEvent.drop(panel as Element, { dataTransfer: internalDataTransfer(remotePayloadRaw()) });
 
     await waitFor(() => {
       expect(window.api.invoke).toHaveBeenCalledWith(

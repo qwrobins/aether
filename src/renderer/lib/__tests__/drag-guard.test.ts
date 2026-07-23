@@ -1,12 +1,25 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   MAX_DRAG_ENTRIES,
+  MAX_DRAG_NAME_LENGTH,
+  MAX_DRAG_PATH_LENGTH,
+  MAX_DRAG_PAYLOAD_LENGTH,
   beginInternalDrag,
   consumeInternalDrag,
   endInternalDrag,
   isInternalDrag,
   parseDragTransferPayload,
 } from '../drag-guard';
+
+function mockDataTransfer(initial?: Record<string, string>) {
+  const store = new Map<string, string>(Object.entries(initial ?? {}));
+  return {
+    setData: (type: string, value: string) => {
+      store.set(type, value);
+    },
+    getData: (type: string) => store.get(type) ?? '',
+  };
+}
 
 describe('drag-guard', () => {
   afterEach(() => {
@@ -15,18 +28,39 @@ describe('drag-guard', () => {
 
   it('tracks drags that begin inside this window', () => {
     expect(isInternalDrag()).toBe(false);
-    beginInternalDrag();
+    beginInternalDrag(mockDataTransfer());
     expect(isInternalDrag()).toBe(true);
     endInternalDrag();
     expect(isInternalDrag()).toBe(false);
   });
 
-  it('consumeInternalDrag reports the token once and clears it', () => {
-    expect(consumeInternalDrag()).toBe(false);
-    beginInternalDrag();
-    expect(consumeInternalDrag()).toBe(true);
+  it('consumeInternalDrag accepts only the matching per-drag token and clears it', () => {
+    expect(consumeInternalDrag(mockDataTransfer())).toBe(false);
+
+    const dt = mockDataTransfer();
+    beginInternalDrag(dt);
+    expect(consumeInternalDrag(dt)).toBe(true);
     expect(isInternalDrag()).toBe(false);
-    expect(consumeInternalDrag()).toBe(false);
+    expect(consumeInternalDrag(dt)).toBe(false);
+  });
+
+  it('consumeInternalDrag rejects drops without the token data', () => {
+    beginInternalDrag(mockDataTransfer());
+    // A forged drop carries no token entry in its DataTransfer.
+    expect(consumeInternalDrag(mockDataTransfer())).toBe(false);
+    expect(isInternalDrag()).toBe(false);
+  });
+
+  it('consumeInternalDrag rejects a stale token from a previous drag', () => {
+    const first = mockDataTransfer();
+    beginInternalDrag(first);
+    const staleToken = first.getData('application/aether-drag-token');
+    endInternalDrag();
+
+    beginInternalDrag(mockDataTransfer());
+    expect(
+      consumeInternalDrag(mockDataTransfer({ 'application/aether-drag-token': staleToken })),
+    ).toBe(false);
   });
 
   it('parses a valid transfer payload', () => {
@@ -76,6 +110,42 @@ describe('drag-guard', () => {
         JSON.stringify({
           panelType: 'local',
           entries: [{ name: 'x', path: '/x', size: 'big', isDirectory: false }],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseDragTransferPayload(
+        JSON.stringify({
+          panelType: 'local',
+          entries: [{ name: 'x', path: '/x', size: -1, isDirectory: false }],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseDragTransferPayload(
+        JSON.stringify({
+          panelType: 'local',
+          entries: [{ name: 'x', path: '/x', size: Number.MAX_SAFE_INTEGER + 1, isDirectory: false }],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('rejects oversized raw payloads and over-long names/paths', () => {
+    expect(parseDragTransferPayload('x'.repeat(MAX_DRAG_PAYLOAD_LENGTH + 1))).toBeNull();
+    expect(
+      parseDragTransferPayload(
+        JSON.stringify({
+          panelType: 'local',
+          entries: [{ name: 'n'.repeat(MAX_DRAG_NAME_LENGTH + 1), path: '/x', isDirectory: false }],
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseDragTransferPayload(
+        JSON.stringify({
+          panelType: 'local',
+          entries: [{ name: 'x', path: `/${'p'.repeat(MAX_DRAG_PATH_LENGTH)}`, isDirectory: false }],
         }),
       ),
     ).toBeNull();

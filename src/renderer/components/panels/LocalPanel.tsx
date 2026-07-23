@@ -65,7 +65,7 @@ export function LocalPanel() {
     async (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragOver(false);
-      const internal = consumeInternalDrag();
+      const internal = consumeInternalDrag(e.dataTransfer);
 
       const raw = e.dataTransfer.getData('application/aether-transfer');
       // Ignore forged payloads: content outside this window can set the same

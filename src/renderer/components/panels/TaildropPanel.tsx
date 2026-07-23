@@ -69,7 +69,7 @@ function DeviceCard({ target }: { target: TaildropTarget }) {
     if (!available) return;
 
     try {
-      const files = getDroppedFiles(e, consumeInternalDrag());
+      const files = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
       if (files.length === 0) return;
       await sendFiles(target, files);
       toast.success(`Queued ${files.length} file${files.length === 1 ? '' : 's'} for ${target.name}`);

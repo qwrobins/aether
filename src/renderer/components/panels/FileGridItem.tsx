@@ -86,7 +86,7 @@ export const FileGridItem = memo(function FileGridItem({
   onTransfer,
 }: FileGridItemProps) {
   const handleDragStart = (e: React.DragEvent) => {
-    beginInternalDrag();
+    beginInternalDrag(e.dataTransfer);
     const draggedEntries = isSelected
       ? allEntries.filter((f) => selectedFiles.has(f.path))
       : [entry];
