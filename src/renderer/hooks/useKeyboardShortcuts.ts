@@ -106,9 +106,11 @@ export function useKeyboardShortcuts() {
       }
 
       if (isCtrl && e.key === 'a') {
-        e.preventDefault();
-        // Select-all applies only to the focused panel; without panel focus, do nothing.
+        // Select-all applies only to the focused panel; without panel focus,
+        // leave default behavior (e.g. selecting text in inputs) intact.
         const focusedPanel = document.activeElement?.closest('[data-panel]')?.getAttribute('data-panel');
+        if (focusedPanel !== 'local' && focusedPanel !== 'remote') return;
+        e.preventDefault();
         if (focusedPanel === 'local') {
           const localStore = useLocalPanelStore.getState();
           if (localStore.entries.length > 0) localStore.selectAll();

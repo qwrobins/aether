@@ -246,6 +246,9 @@ export class TransferService {
       const fileStat = await stat(item.sourcePath);
       item.size = fileStat.size;
 
+      // Never start an upload whose cancellation landed while we were stat'ing.
+      if (signal?.aborted) throw new Error('Aborted');
+
       const fileStream = createReadStream(item.sourcePath);
       const uploadController = new AbortController();
       const handleAbort = () => uploadController.abort();

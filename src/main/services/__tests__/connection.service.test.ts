@@ -354,4 +354,25 @@ describe('ConnectionService', () => {
     );
     expect(writeStore).not.toHaveBeenCalled();
   });
+
+  it('refuses to trust a host key for non-SSH profile types without persisting', async () => {
+    const existing = {
+      id: 'conn-s3',
+      name: 'Bucket',
+      type: 's3',
+      region: 'us-east-1',
+      createdAt: '2026-03-07T10:00:00.000Z',
+      updatedAt: '2026-03-07T10:00:00.000Z',
+    };
+
+    readStore.mockReturnValue({ connections: [existing] });
+
+    const { ConnectionService } = await import('../connection.service');
+    const service = new ConnectionService();
+
+    expect(() => service.trustHostKey('conn-s3', 'SHA256:abc123')).toThrow(
+      'Connection does not support SSH host-key trust: conn-s3',
+    );
+    expect(writeStore).not.toHaveBeenCalled();
+  });
 });

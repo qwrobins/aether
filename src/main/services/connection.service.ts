@@ -152,6 +152,9 @@ export class ConnectionService {
     if (!profile) {
       throw new Error(`Connection not found: ${id}`);
     }
+    if (profile.type !== 'sftp' && profile.type !== 'rsync') {
+      throw new Error(`Connection does not support SSH host-key trust: ${id}`);
+    }
     (profile as SftpConnectionProfile | RsyncConnectionProfile).hostKeyFingerprint = fingerprint;
     profile.updatedAt = new Date().toISOString();
     store.connections = profiles as unknown as Record<string, unknown>[];
