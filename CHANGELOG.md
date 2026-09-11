@@ -4,9 +4,9 @@
 
 ### Bug Fixes
 
-* Restore native file-manager drops, including Dolphin, for remote uploads and Taildrop using Electron's supported file-path API.
-* Report inaccessible or failed files while continuing to queue other files in the same drop, preserving protections against forged drag payloads.
-* Fix the Taildrop refresh click handler and update stale test fixtures so TypeScript checking passes.
+* fix: restore native file drops and clear TypeScript errors ([#47](https://github.com/qwrobins/aether/pull/47))
+  * Dragging files from Dolphin or another system file manager into the destination pane silently skipped every file because the handlers used Electron's removed `File.path` property. Resolve native files through `webUtils.getPathForFile` in the isolated preload bridge, capture all paths before asynchronous uploads begin, and report failures visibly while continuing to queue accessible files in a mixed drop. Apply the same fix to Taildrop while preserving the guards against forged internal drag payloads.
+  * Fix the Taildrop refresh click handler and stale test fixtures so TypeScript checking passes. Bump Aether to 0.1.26 with matching lockfile, release manifest, and changelog for the existing release automation.
 
 ## [0.1.25](https://github.com/qwrobins/aether/compare/v0.1.24...v0.1.25) (2026-07-23)
 
