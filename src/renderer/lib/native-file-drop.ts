@@ -2,14 +2,21 @@ import type { FileEntry } from '@shared/types/filesystem';
 
 export function getNativeDroppedFiles(
   dataTransfer: Pick<DataTransfer, 'files'>,
-): Pick<FileEntry, 'path' | 'name' | 'size'>[] {
+): { files: Pick<FileEntry, 'path' | 'name' | 'size'>[]; errors: string[] } {
   // Resolve every native File synchronously while the drop data is accessible.
   // Never fall back to text/URI payloads: another app can forge arbitrary paths.
-  return Array.from(dataTransfer.files, (file) => {
-    const path = window.api.getPathForFile(file);
-    if (!path) {
-      throw new Error(`Cannot access "${file.name}". Drop a local file or folder from your file manager.`);
+  const files: Pick<FileEntry, 'path' | 'name' | 'size'>[] = [];
+  const errors: string[] = [];
+  for (const file of Array.from(dataTransfer.files)) {
+    try {
+      const path = window.api.getPathForFile(file);
+      if (!path) {
+        throw new Error('Cannot access this item. Drop a local file or folder from your file manager.');
+      }
+      files.push({ path, name: file.name, size: file.size });
+    } catch (error) {
+      errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    return { path, name: file.name, size: file.size };
-  });
+  }
+  return { files, errors };
 }

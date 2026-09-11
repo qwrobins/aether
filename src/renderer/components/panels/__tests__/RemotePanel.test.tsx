@@ -208,6 +208,38 @@ describe('RemotePanel file drops', () => {
     expect(window.api.invoke).not.toHaveBeenCalled();
   });
 
+  it.each(['empty path', 'resolver error'])(
+    'queues the accessible files before and after a file with an %s',
+    async (failure) => {
+      const first = nativeFile('first.txt', '/local/first.txt');
+      const unavailable = new File(['unavailable'], 'unavailable.txt');
+      const last = nativeFile('last.txt', '/local/last.txt');
+      vi.mocked(window.api.getPathForFile).mockImplementation((file) => {
+        if (file === unavailable && failure === 'resolver error') {
+          throw new Error('Native file is unavailable');
+        }
+        return nativePaths.get(file) ?? '';
+      });
+      vi.mocked(window.api.invoke)
+        .mockResolvedValueOnce('transfer-1')
+        .mockResolvedValueOnce('transfer-3');
+
+      fireEvent.drop(renderDropTarget(), {
+        dataTransfer: dataTransfer([first, unavailable, last]),
+      });
+
+      expect(window.api.getPathForFile).toHaveBeenCalledTimes(3);
+      await waitFor(() => expect(useTransferStore.getState().transfers).toHaveLength(2));
+      expect(useTransferStore.getState().transfers.map((transfer) => transfer.sourcePath)).toEqual([
+        '/local/first.txt', '/local/last.txt',
+      ]);
+      expect(window.api.invoke).toHaveBeenCalledTimes(2);
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/Upload failed:.*unavailable\.txt/),
+      );
+    },
+  );
+
   it('reports transfer failures without adding a phantom queued transfer', async () => {
     vi.mocked(window.api.invoke).mockRejectedValue(new Error('Connection closed'));
 
@@ -215,8 +247,35 @@ describe('RemotePanel file drops', () => {
       dataTransfer: dataTransfer([nativeFile('report.txt', '/local/report.txt')]),
     });
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Upload failed: Connection closed'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/Upload failed:.*Connection closed/),
+    ));
     expect(useTransferStore.getState().transfers).toHaveLength(0);
+  });
+
+  it('continues queueing native files after a transfer fails', async () => {
+    const files = ['first.txt', 'unavailable.txt', 'last.txt'].map((name) =>
+      nativeFile(name, `/local/${name}`),
+    );
+    vi.mocked(window.api.invoke)
+      .mockResolvedValueOnce('transfer-1')
+      .mockRejectedValueOnce(new Error('File is unreadable'))
+      .mockResolvedValueOnce('transfer-3');
+
+    fireEvent.drop(renderDropTarget(), { dataTransfer: dataTransfer(files) });
+
+    await waitFor(() => expect(useTransferStore.getState().transfers).toHaveLength(2));
+    expect(window.api.invoke).toHaveBeenCalledTimes(3);
+    expect(window.api.invoke).toHaveBeenNthCalledWith(3, 'transfer:start', expect.objectContaining({
+      sourcePath: '/local/last.txt',
+      destinationPath: '/incoming/last.txt',
+    }));
+    expect(useTransferStore.getState().transfers.map((transfer) => transfer.sourcePath)).toEqual([
+      '/local/first.txt', '/local/last.txt',
+    ]);
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/Upload failed:.*unavailable\.txt.*File is unreadable/),
+    );
   });
 
   it('continues accepting authenticated internal drags from the local pane', async () => {

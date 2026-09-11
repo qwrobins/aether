@@ -22,15 +22,18 @@ type TaildropLocalFile = {
   isDirectory?: boolean;
 };
 
-function getDroppedFiles(e: React.DragEvent, internal: boolean): TaildropLocalFile[] {
+function getDroppedFiles(
+  e: React.DragEvent,
+  internal: boolean,
+): { files: TaildropLocalFile[]; errors: string[] } {
   const raw = e.dataTransfer.getData('application/aether-transfer');
   if (raw) {
     // Ignore forged payloads: content outside this window can set the same
     // MIME type to send attacker-chosen local paths to a Taildrop device.
-    if (!internal) return [];
+    if (!internal) return { files: [], errors: [] };
     const payload = parseDragTransferPayload(raw);
-    if (!payload || payload.panelType !== 'local') return [];
-    return payload.entries;
+    if (!payload || payload.panelType !== 'local') return { files: [], errors: [] };
+    return { files: payload.entries, errors: [] };
   }
 
   return getNativeDroppedFiles(e.dataTransfer);
@@ -59,7 +62,8 @@ function DeviceCard({ target }: { target: TaildropTarget }) {
     if (!available) return;
 
     try {
-      const files = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
+      const { files, errors } = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
+      if (errors.length > 0) toast.error(`Taildrop send failed: ${errors.join('; ')}`);
       if (files.length === 0) return;
       await sendFiles(target, files);
       toast.success(`Queued ${files.length} file${files.length === 1 ? '' : 's'} for ${target.name}`);

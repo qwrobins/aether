@@ -190,7 +190,8 @@ export function RemotePanel() {
 
       // Handle OS file drops (files from system file manager)
       try {
-        for (const file of getNativeDroppedFiles(e.dataTransfer)) {
+        const { files, errors } = getNativeDroppedFiles(e.dataTransfer);
+        for (const file of files) {
           const filePath = file.path;
 
           const destPath = activeProfile.type === 'sftp' ||
@@ -208,28 +209,33 @@ export function RemotePanel() {
             bucket: currentBucket || undefined,
           };
 
-          const result = await window.api.invoke('transfer:start', request);
-          const { addTransfer, addTransfers } = useTransferStore.getState();
-          if (Array.isArray(result)) {
-            addTransfers(result);
-          } else {
-            addTransfer({
-              id: result,
-              fileName: file.name,
-              sourcePath: filePath,
-              destinationPath: destPath,
-              direction: 'upload',
-              connectionId: activeConnectionId,
-              connectionType: activeProfile.type,
-              bucket: request.bucket,
-              size: file.size,
-              bytesTransferred: 0,
-              status: 'queued',
-              speed: 0,
-              retryCount: 0,
-            });
+          try {
+            const result = await window.api.invoke('transfer:start', request);
+            const { addTransfer, addTransfers } = useTransferStore.getState();
+            if (Array.isArray(result)) {
+              addTransfers(result);
+            } else {
+              addTransfer({
+                id: result,
+                fileName: file.name,
+                sourcePath: filePath,
+                destinationPath: destPath,
+                direction: 'upload',
+                connectionId: activeConnectionId,
+                connectionType: activeProfile.type,
+                bucket: request.bucket,
+                size: file.size,
+                bytesTransferred: 0,
+                status: 'queued',
+                speed: 0,
+                retryCount: 0,
+              });
+            }
+          } catch (err) {
+            errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+        if (errors.length > 0) throw new Error(errors.join('; '));
       } catch (err) {
         console.error('[Aether] Upload drop handler error:', err);
         toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);

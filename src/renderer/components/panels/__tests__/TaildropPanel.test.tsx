@@ -13,13 +13,13 @@ vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const target: TaildropTarget = { id: 'device-1', name: 'Laptop', status: 'available' };
 
-async function dropOnDevice(file: File) {
+async function dropOnDevice(...files: File[]) {
   render(<TaildropPanel />);
   const name = await screen.findByText('Laptop');
   const card = name.closest('[class*="group"]');
   expect(card).not.toBeNull();
   fireEvent.drop(card as Element, {
-    dataTransfer: { files: [file], types: ['Files'], getData: () => '' },
+    dataTransfer: { files, types: ['Files'], getData: () => '' },
   });
 }
 
@@ -28,10 +28,11 @@ describe('TaildropPanel native file drops', () => {
     endInternalDrag();
     useTaildropStore.setState(useTaildropStore.getInitialState());
     useTransferStore.setState({ transfers: [] });
+    let transferCount = 0;
     window.api.invoke = vi.fn().mockImplementation(async (channel: string) => {
       if (channel === 'taildrop:status') return { status: 'available', platform: 'linux' };
       if (channel === 'taildrop:list-targets') return [target];
-      if (channel === 'transfer:start') return 'transfer-1';
+      if (channel === 'transfer:start') return `transfer-${++transferCount}`;
       throw new Error(`Unexpected channel: ${channel}`);
     });
   });
@@ -64,4 +65,35 @@ describe('TaildropPanel native file drops', () => {
     expect(window.api.invoke).not.toHaveBeenCalledWith('transfer:start', expect.anything());
     expect(toast.success).not.toHaveBeenCalled();
   });
+
+  it.each(['empty path', 'resolver error'])(
+    'queues the accessible files before and after a file with an %s',
+    async (failure) => {
+      const first = new File(['first'], 'first.txt');
+      const unavailable = new File(['unavailable'], 'unavailable.txt');
+      const last = new File(['last'], 'last.txt');
+      window.api.getPathForFile = vi.fn((file: File) => {
+        if (file === unavailable) {
+          if (failure === 'resolver error') throw new Error('Native file is unavailable');
+          return '';
+        }
+        return `/local/${file.name}`;
+      });
+
+      await dropOnDevice(first, unavailable, last);
+
+      await waitFor(() => expect(useTransferStore.getState().transfers).toHaveLength(2));
+      expect(window.api.getPathForFile).toHaveBeenCalledTimes(3);
+      expect(useTransferStore.getState().transfers.map((transfer) => transfer.sourcePath)).toEqual([
+        '/local/first.txt', '/local/last.txt',
+      ]);
+      expect(window.api.invoke).not.toHaveBeenCalledWith('transfer:start', expect.objectContaining({
+        sourcePath: '/local/unavailable.txt',
+      }));
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/Taildrop send failed:.*unavailable\.txt/),
+      );
+      expect(toast.success).toHaveBeenCalledWith('Queued 2 files for Laptop');
+    },
+  );
 });
