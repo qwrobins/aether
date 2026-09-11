@@ -2,6 +2,7 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 type TestApi = {
+  getPathForFile: ReturnType<typeof vi.fn>;
   invoke: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
 };
@@ -25,6 +26,7 @@ if (typeof window !== 'undefined') {
 
   Object.defineProperty(testWindow, 'api', {
     value: {
+      getPathForFile: vi.fn(),
       invoke: vi.fn(),
       on: vi.fn(() => vi.fn()),
     },
@@ -46,6 +48,7 @@ afterEach(() => {
 
   if (typeof window !== 'undefined') {
     const testWindow = window as Window & typeof globalThis & { api: TestApi };
+    testWindow.api.getPathForFile = vi.fn();
     testWindow.api.invoke = vi.fn();
     testWindow.api.on = vi.fn(() => vi.fn());
   }

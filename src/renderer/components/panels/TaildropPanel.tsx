@@ -10,6 +10,7 @@ import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTaildropStore } from '@/stores/taildropStore';
 import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
+import { getNativeDroppedFiles } from '@/lib/native-file-drop';
 import type { TaildropTarget } from '@shared/types/taildrop';
 
 const TAILDROP_REFRESH_INTERVAL_MS = 10_000;
@@ -21,29 +22,21 @@ type TaildropLocalFile = {
   isDirectory?: boolean;
 };
 
-function getDroppedFiles(e: React.DragEvent, internal: boolean): TaildropLocalFile[] {
+function getDroppedFiles(
+  e: React.DragEvent,
+  internal: boolean,
+): { files: TaildropLocalFile[]; errors: string[] } {
   const raw = e.dataTransfer.getData('application/aether-transfer');
   if (raw) {
     // Ignore forged payloads: content outside this window can set the same
     // MIME type to send attacker-chosen local paths to a Taildrop device.
-    if (!internal) return [];
+    if (!internal) return { files: [], errors: [] };
     const payload = parseDragTransferPayload(raw);
-    if (!payload || payload.panelType !== 'local') return [];
-    return payload.entries;
+    if (!payload || payload.panelType !== 'local') return { files: [], errors: [] };
+    return { files: payload.entries, errors: [] };
   }
 
-  const files: TaildropLocalFile[] = [];
-  for (const file of Array.from(e.dataTransfer.files)) {
-      const filePath = (file as File & { path?: string }).path;
-      if (!filePath) continue;
-      files.push({
-        path: filePath,
-        name: file.name,
-        size: file.size,
-        isDirectory: false,
-      });
-  }
-  return files;
+  return getNativeDroppedFiles(e.dataTransfer);
 }
 
 function DeviceCard({ target }: { target: TaildropTarget }) {
@@ -69,7 +62,8 @@ function DeviceCard({ target }: { target: TaildropTarget }) {
     if (!available) return;
 
     try {
-      const files = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
+      const { files, errors } = getDroppedFiles(e, consumeInternalDrag(e.dataTransfer));
+      if (errors.length > 0) toast.error(`Taildrop send failed: ${errors.join('; ')}`);
       if (files.length === 0) return;
       await sendFiles(target, files);
       toast.success(`Queued ${files.length} file${files.length === 1 ? '' : 's'} for ${target.name}`);
@@ -254,7 +248,7 @@ export function TaildropPanel() {
             </Button>
           )}
           <button
-            onClick={refresh}
+            onClick={() => void refresh()}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] duration-150 hover:bg-white/6 hover:text-foreground active:bg-white/8"
             aria-label="Refresh Taildrop devices"
             title="Refresh Taildrop devices"

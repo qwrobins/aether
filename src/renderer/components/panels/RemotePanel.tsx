@@ -6,6 +6,7 @@ import { useTransferStore } from '@/stores/transferStore';
 import { usePromptStore } from '@/stores/promptStore';
 import { getSftpDeleteErrorMessage } from '@/lib/remote';
 import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
+import { getNativeDroppedFiles } from '@/lib/native-file-drop';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
@@ -188,10 +189,10 @@ export function RemotePanel() {
       }
 
       // Handle OS file drops (files from system file manager)
-      if (e.dataTransfer.files.length > 0) {
-        for (const file of Array.from(e.dataTransfer.files)) {
-          const filePath = (file as File & { path?: string }).path;
-          if (!filePath) continue;
+      try {
+        const { files, errors } = getNativeDroppedFiles(e.dataTransfer);
+        for (const file of files) {
+          const filePath = file.path;
 
           const destPath = activeProfile.type === 'sftp' ||
             activeProfile.type === 'rsync' ||
@@ -206,31 +207,38 @@ export function RemotePanel() {
             connectionId: activeConnectionId,
             connectionType: activeProfile.type,
             bucket: currentBucket || undefined,
-            isDirectory: false,
           };
 
-          const result = await window.api.invoke('transfer:start', request);
-          const { addTransfer, addTransfers } = useTransferStore.getState();
-          if (Array.isArray(result)) {
-            addTransfers(result);
-          } else {
-            addTransfer({
-              id: result,
-              fileName: file.name,
-              sourcePath: filePath,
-              destinationPath: destPath,
-              direction: 'upload',
-              connectionId: activeConnectionId,
-              connectionType: activeProfile.type,
-              bucket: request.bucket,
-              size: file.size,
-              bytesTransferred: 0,
-              status: 'queued',
-              speed: 0,
-              retryCount: 0,
-            });
+          try {
+            const result = await window.api.invoke('transfer:start', request);
+            const { addTransfer, addTransfers } = useTransferStore.getState();
+            if (Array.isArray(result)) {
+              addTransfers(result);
+            } else {
+              addTransfer({
+                id: result,
+                fileName: file.name,
+                sourcePath: filePath,
+                destinationPath: destPath,
+                direction: 'upload',
+                connectionId: activeConnectionId,
+                connectionType: activeProfile.type,
+                bucket: request.bucket,
+                size: file.size,
+                bytesTransferred: 0,
+                status: 'queued',
+                speed: 0,
+                retryCount: 0,
+              });
+            }
+          } catch (err) {
+            errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
+        if (errors.length > 0) throw new Error(errors.join('; '));
+      } catch (err) {
+        console.error('[Aether] Upload drop handler error:', err);
+        toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
     [activeConnectionId, activeProfile, currentPath, currentBucket]
