@@ -26,7 +26,7 @@ function transfer(overrides: Partial<TransferItem>): TransferItem {
 describe('useTransferStore', () => {
   beforeEach(() => {
     useTransferStore.getState().setTransfers([]);
-    useUiStore.setState({ transferQueueExpanded: false, sidebarExpanded: true, theme: 'dark' });
+    useUiStore.setState({ transferQueueExpanded: false, sidebarExpanded: true, theme: 'luminous' });
   });
 
   it('adds transfers and expands the queue', () => {

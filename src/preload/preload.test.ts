@@ -4,6 +4,7 @@ const exposeInMainWorld = vi.fn();
 const invoke = vi.fn();
 const on = vi.fn();
 const removeListener = vi.fn();
+const getPathForFile = vi.fn();
 
 vi.mock('electron', () => ({
   contextBridge: {
@@ -14,6 +15,7 @@ vi.mock('electron', () => ({
     on,
     removeListener,
   },
+  webUtils: { getPathForFile },
 }));
 
 describe('preload bridge', () => {
@@ -23,7 +25,27 @@ describe('preload bridge', () => {
     invoke.mockClear();
     on.mockClear();
     removeListener.mockClear();
+    getPathForFile.mockReset();
     await import('./preload');
+  });
+
+  it('resolves native File paths through Electron without sending File objects over IPC', () => {
+    const file = new File(['hello'], 'hello.txt');
+    getPathForFile.mockReturnValue('/home/user/hello.txt');
+    const api = exposeInMainWorld.mock.calls[0][1];
+
+    expect(api.getPathForFile(file)).toBe('/home/user/hello.txt');
+    expect(getPathForFile).toHaveBeenCalledWith(file);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not substitute a caller-provided path for a File without a native path', () => {
+    const file = Object.assign(new File(['hello'], 'hello.txt'), { path: '/private/secret' });
+    getPathForFile.mockReturnValue('');
+    const api = exposeInMainWorld.mock.calls[0][1];
+
+    expect(api.getPathForFile(file)).toBe('');
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it('allows known invoke channels', async () => {

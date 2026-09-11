@@ -91,3 +91,16 @@ export interface IpcEventMap {
   'transfer:complete': TransferResult;
   'transfer:error': { transferId: string; error: string };
 }
+
+export interface ElectronApi {
+  // File objects must be resolved in preload; they cannot be sent over IPC.
+  getPathForFile: (file: File) => string;
+  invoke: <K extends keyof IpcInvokeMap>(
+    channel: K,
+    ...args: IpcInvokeMap[K]['args']
+  ) => Promise<IpcInvokeMap[K]['return']>;
+  on: <K extends keyof IpcEventMap>(
+    channel: K,
+    callback: (data: IpcEventMap[K]) => void,
+  ) => () => void;
+}

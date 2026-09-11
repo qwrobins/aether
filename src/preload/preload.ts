@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IpcChannels } from '@shared/constants/channels';
-import type { IpcEventMap, IpcInvokeMap } from '@shared/types/ipc';
+import type { ElectronApi, IpcEventMap, IpcInvokeMap } from '@shared/types/ipc';
 
 const allowedInvokeChannels = new Set<keyof IpcInvokeMap>([
   IpcChannels.FS_READ_DIR,
@@ -67,6 +67,7 @@ function assertAllowedChannel<K extends string>(
 }
 
 contextBridge.exposeInMainWorld('api', {
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   invoke: <K extends keyof IpcInvokeMap>(
     channel: K,
     ...args: IpcInvokeMap[K]['args']
@@ -84,4 +85,4 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.removeListener(channel, handler);
     };
   },
-});
+} satisfies ElectronApi);

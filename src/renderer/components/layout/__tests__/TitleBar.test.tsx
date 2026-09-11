@@ -16,7 +16,7 @@ function profile(overrides: Partial<S3ConnectionProfile> = {}): S3ConnectionProf
     type: 's3',
     region: 'us-east-1',
     authMethod: 'profile',
-    profile: 'production',
+    awsProfile: 'production',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,

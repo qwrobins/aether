@@ -6,6 +6,7 @@ import { useTransferStore } from '@/stores/transferStore';
 import { usePromptStore } from '@/stores/promptStore';
 import { getSftpDeleteErrorMessage } from '@/lib/remote';
 import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
+import { getNativeDroppedFiles } from '@/lib/native-file-drop';
 import { PanelHeader } from './PanelHeader';
 import { FileList } from './FileList';
 import { DropZone } from './DropZone';
@@ -188,10 +189,9 @@ export function RemotePanel() {
       }
 
       // Handle OS file drops (files from system file manager)
-      if (e.dataTransfer.files.length > 0) {
-        for (const file of Array.from(e.dataTransfer.files)) {
-          const filePath = (file as File & { path?: string }).path;
-          if (!filePath) continue;
+      try {
+        for (const file of getNativeDroppedFiles(e.dataTransfer)) {
+          const filePath = file.path;
 
           const destPath = activeProfile.type === 'sftp' ||
             activeProfile.type === 'rsync' ||
@@ -206,7 +206,6 @@ export function RemotePanel() {
             connectionId: activeConnectionId,
             connectionType: activeProfile.type,
             bucket: currentBucket || undefined,
-            isDirectory: false,
           };
 
           const result = await window.api.invoke('transfer:start', request);
@@ -231,6 +230,9 @@ export function RemotePanel() {
             });
           }
         }
+      } catch (err) {
+        console.error('[Aether] Upload drop handler error:', err);
+        toast.error(`Upload failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     },
     [activeConnectionId, activeProfile, currentPath, currentBucket]

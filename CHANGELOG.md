@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.26](https://github.com/qwrobins/aether/compare/v0.1.25...v0.1.26) (2026-09-11)
+
+### Bug Fixes
+
+* Restore native file-manager drops, including Dolphin, for remote uploads and Taildrop using Electron's supported file-path API.
+* Show errors when dropped files cannot be accessed or queued, while preserving protections against forged drag payloads.
+* Fix the Taildrop refresh click handler and update stale test fixtures so TypeScript checking passes.
+
 ## [0.1.25](https://github.com/qwrobins/aether/compare/v0.1.24...v0.1.25) (2026-07-23)
 
 ### Bug Fixes

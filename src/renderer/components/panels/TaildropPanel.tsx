@@ -10,6 +10,7 @@ import { ProviderIcon } from '@/components/shared/ProviderIcon';
 import { useLocalPanelStore } from '@/stores/localPanelStore';
 import { useTaildropStore } from '@/stores/taildropStore';
 import { consumeInternalDrag, isInternalDrag, parseDragTransferPayload } from '@/lib/drag-guard';
+import { getNativeDroppedFiles } from '@/lib/native-file-drop';
 import type { TaildropTarget } from '@shared/types/taildrop';
 
 const TAILDROP_REFRESH_INTERVAL_MS = 10_000;
@@ -32,18 +33,7 @@ function getDroppedFiles(e: React.DragEvent, internal: boolean): TaildropLocalFi
     return payload.entries;
   }
 
-  const files: TaildropLocalFile[] = [];
-  for (const file of Array.from(e.dataTransfer.files)) {
-      const filePath = (file as File & { path?: string }).path;
-      if (!filePath) continue;
-      files.push({
-        path: filePath,
-        name: file.name,
-        size: file.size,
-        isDirectory: false,
-      });
-  }
-  return files;
+  return getNativeDroppedFiles(e.dataTransfer);
 }
 
 function DeviceCard({ target }: { target: TaildropTarget }) {
@@ -254,7 +244,7 @@ export function TaildropPanel() {
             </Button>
           )}
           <button
-            onClick={refresh}
+            onClick={() => void refresh()}
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] duration-150 hover:bg-white/6 hover:text-foreground active:bg-white/8"
             aria-label="Refresh Taildrop devices"
             title="Refresh Taildrop devices"
